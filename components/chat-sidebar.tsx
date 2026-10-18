@@ -17,6 +17,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  SidebarTrigger,
 } from "@/components/ui/sidebar"
 
 type ChatSidebarProps = {
@@ -37,6 +38,11 @@ export function ChatSidebar({
           <span className="min-w-0 flex-1 truncate text-sm font-semibold group-data-[collapsible=icon]:hidden">
             Brilina Forge
           </span>
+          <SidebarTrigger
+            className="ml-auto hidden md:inline-flex"
+            aria-label="Toggle sidebar"
+            title="Toggle sidebar"
+          />
         </div>
         <Button
           variant="outline"
