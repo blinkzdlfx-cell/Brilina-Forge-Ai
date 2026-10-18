@@ -9,9 +9,8 @@ const baseTools = {
   ask_user: askUser,
 }
 
-export function getTools(modelId: string) {
-  const webSearch = getWebSearch(modelId)
-  return webSearch ? { ...baseTools, web_search: webSearch } : baseTools
+export function getTools() {
+  return { ...baseTools, web_search: getWebSearch() }
 }
 
 export type ChatUIMessage = UIMessage<
@@ -22,8 +21,17 @@ export type ChatUIMessage = UIMessage<
   UIDataTypes,
   InferUITools<typeof baseTools> & {
     web_search: {
-      input: { query?: string }
-      output: unknown
+      input: { query: string }
+      output: {
+        query: string
+        results: Array<{
+          title: string
+          url: string
+          content: string
+          publishedDate?: string
+        }>
+        error?: string
+      }
     }
   }
 >

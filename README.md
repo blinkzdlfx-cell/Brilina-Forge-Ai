@@ -1,103 +1,64 @@
-# chatbot-template
+# Brilina Forge AI
 
-A minimal chatbot template built with Next.js, the [AI SDK](https://ai-sdk.dev), [shadcn/ui](https://ui.shadcn.com), [shadcn/react](https://ui.shadcn.com/docs/react/message-scroller), [shadcn/typeset](https://ui.shadcn.com/docs/typeset) and the [Vercel AI Gateway](https://vercel.com/docs/ai-gateway).
+A streaming AI assistant built with Next.js, the AI SDK, and shadcn components. The app is configured to run on Cloudflare Workers using the OpenNext Cloudflare adapter.
 
-<p>
-  <a href="https://github.com/shadcn-ui/chatbot-template/stargazers"><img src="https://shieldcn.dev/github/stars/shadcn-ui/chatbot-template.svg?variant=secondary&size=xs" alt="GitHub stars" /></a>
-  <a href="https://github.com/shadcn-ui/chatbot-template/forks"><img src="https://shieldcn.dev/github/forks/shadcn-ui/chatbot-template.svg?variant=secondary&size=xs" alt="GitHub forks" /></a>
-  <a href="https://github.com/shadcn-ui/chatbot-template/blob/main/LICENSE"><img src="https://shieldcn.dev/github/license/shadcn-ui/chatbot-template.svg?variant=secondary&size=xs" alt="License" /></a>
-</p>
+## AI and web search
 
-## Features
+- **AI model:** Cloudflare Workers AI `@cf/zai-org/glm-4.7-flash`, accessed through Cloudflare's OpenAI-compatible endpoint.
+- **Web search:** Tavily's independent search API. The server requests at most five results, only accepts HTTPS result URLs, truncates excerpts, applies a timeout, and returns safe errors for provider failures.
+- **Citations:** The assistant is instructed to cite web-supported claims with Markdown links to the exact URLs returned by Tavily.
+- **Existing UI:** The shadcn chatbot interface, streaming messages, GitHub repository lookup, and interactive question tool are retained.
 
-- Streaming chat with markdown rendering and shadcn/typeset
-- Tool calling example
-- Web search via each provider's built-in search tool
-- Human-in-the-loop questionnaire. The model can ask clarifying questions, answered with the shadcn questionnaire component
+Tavily and Cloudflare credentials are server-side only. Do not prefix them with `NEXT_PUBLIC_` or commit real values.
 
-## Deploy
+## Environment variables
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fshadcn-ui%2Fchatbot-template&project-name=chatbot-template&repository-name=chatbot-template)
+Copy `.env.example` to `.env.local` for local development.
 
-That's it — no configuration needed. Vercel deployments authenticate to the AI Gateway automatically via OIDC, and usage runs on your team's [AI Gateway credits](https://vercel.com/docs/ai-gateway/pricing).
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `CLOUDFLARE_ACCOUNT_ID` | Yes | Cloudflare account ID used in the Workers AI API URL |
+| `CLOUDFLARE_AI_API_TOKEN` | Yes | Cloudflare API token with permission to call Workers AI |
+| `TAVILY_API_KEY` | For web search | Tavily API key |
+| `NEXTJS_ENV` | Local development | OpenNext environment mode |
+
+The `GET /api/health` endpoint reports whether the AI and search credentials are configured. It never returns their values.
 
 ## Local development
 
-```bash
-pnpm install
-```
-
-Then give the app a gateway credential, either by pulling an OIDC token from your linked Vercel project:
+Use Node.js 22 or newer and pnpm 10.
 
 ```bash
-vercel link
-vercel env pull
-```
-
-or by creating an API key in the Vercel dashboard (**AI Gateway → API Keys**) and adding it to `.env.local`:
-
-```bash
+pnpm install --no-frozen-lockfile
 cp .env.example .env.local
-# then set AI_GATEWAY_API_KEY=...
-```
-
-Start the dev server:
-
-```bash
+# Fill in the credentials in .env.local
 pnpm dev
 ```
 
-## Configuration
+## Cloudflare Workers deployment
 
-| Env var              | Required       | Description                                                  |
-| -------------------- | -------------- | ------------------------------------------------------------ |
-| `AI_GATEWAY_API_KEY` | Local dev only | AI Gateway API key. Not needed on Vercel deployments (OIDC). |
+The repository includes `wrangler.jsonc` and `open-next.config.ts`. OpenNext converts the Next.js build output into a Worker. The Worker name is `brilina-forge-ai`.
 
-The model list lives in [lib/models.ts](lib/models.ts) — the first entry is the default model.
+1. Connect this repository to Cloudflare Workers Builds, with `main` as the production branch.
+2. Use Node.js 22 and pnpm 10 for the build environment.
+3. Set the install command to `pnpm install --no-frozen-lockfile` for the first build. GitHub Actions refreshes and commits `pnpm-lock.yaml` after the checks pass; subsequent builds can use `pnpm install --frozen-lockfile`.
+4. Set the build command to `pnpm build:worker` for a build-only check. The separate `pnpm deploy` command deploys using Wrangler credentials and should only be used when intentionally deploying through Wrangler.
+5. Add `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AI_API_TOKEN`, and `TAVILY_API_KEY` as encrypted Worker secrets/environment variables in Cloudflare. Do not put secrets in `wrangler.jsonc`.
+6. After deployment, open `/api/health`. Then test a current-events question and confirm that the response includes source links.
 
-## Security
+Scripts:
 
-The `/api/chat` route is **public and unauthenticated** — every request spends your AI Gateway credits. That's fine for a personal demo, but before putting it in front of real traffic you should:
+- `pnpm test` — Tavily search behavior tests.
+- `pnpm lint` — ESLint.
+- `pnpm typecheck` — TypeScript checks.
+- `pnpm build:worker` — Next.js production build and OpenNext Cloudflare adaptation.
+- `pnpm preview` — Build and preview in the Workers runtime.
+- `pnpm deploy` — Build and deploy through Wrangler.
 
-- **Rate limit it.** Add [Vercel Firewall / WAF](https://vercel.com/docs/security/vercel-waf) rules or [`@upstash/ratelimit`](https://github.com/upstash/ratelimit-js) so a single client can't drain your credits (denial-of-wallet).
-- **Cap spend.** Set an [AI Gateway spend limit](https://vercel.com/docs/ai-gateway/observability-and-spend/budgets) as a backstop.
-- **Add auth** if the chatbot isn't meant to be public.
+## CI
 
-The route already validates the request body, restricts models to [lib/models.ts](lib/models.ts), caps output tokens and step count, and aborts generation on client disconnect — but those bound a single request, not overall volume.
+GitHub Actions runs unit tests, lint, type checking, and the Cloudflare Worker build on pushes to `main` and pull requests. It installs with `pnpm install --no-frozen-lockfile` so it can refresh the lockfile after dependency changes. On successful pushes to `main`, it commits a changed lockfile so Cloudflare can subsequently use frozen-lockfile installs.
 
-## How it works
+## Security notes
 
-- [app/api/chat/route.ts](app/api/chat/route.ts) streams responses with `streamText`
-- [components/chat.tsx](components/chat.tsx) renders the conversation with `useChat` and shadcn chat primitives.
-- [tools/](tools) defines the tools — one file per tool (the filename is the model-facing tool name), composed in [tools/index.ts](tools/index.ts): a server-executed GitHub repo lookup, the interactive `ask_user` questionnaire, and provider-native web search.
-
-## Tool parts
-
-Assistant messages are a list of typed parts. [components/chat-message.tsx](components/chat-message.tsx) switches on `part.type` and delegates each one to a component in [components/parts/](components/parts):
-
-| Part type          | Component                                                          | Renders                                                                                                                                       |
-| ------------------ | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `text`             | [text-part.tsx](components/parts/text-part.tsx)                   | Markdown via react-markdown and shadcn/typeset.                                                                                                |
-| `tool-github_repo` | [github-repo-part.tsx](components/parts/github-repo-part.tsx)     | A spinner while the lookup runs, then a linked stat line (stars, forks, language).                                                             |
-| `tool-web_search`  | [web-search-part.tsx](components/parts/web-search-part.tsx)       | A "Searching the web…" status while the search runs, then a persistent "Searched the web" line per search.                                     |
-| `tool-ask_user`    | [ask-user-part.tsx](components/parts/ask-user-part.tsx)           | The answered questions inline. Pending questions render in [question-card.tsx](components/question-card.tsx), pinned to the scroller bottom.   |
-| `source-url`       | [sources-part.tsx](components/parts/sources-part.tsx)             | Web search citations, deduped into a "Searched N websites" drawer once the message finishes streaming.                                         |
-
-Tool parts move through states as the stream progresses — `input-streaming` → `input-available` → `output-available` (or `output-error`) — and each component switches on `part.state` to show progress, results, and failures.
-
-### Adding your own tool
-
-1. Create `tools/<name>.ts` (the filename is the model-facing tool name) exporting a `tool()` with a `description`, an `inputSchema`, and an `execute` function (omit `execute` for tools the user answers in the UI, like `ask_user`), then register it in [tools/index.ts](tools/index.ts).
-2. Add a part component in [components/parts/](components/parts) and a `case "tool-<name>"` in [chat-message.tsx](components/chat-message.tsx).
-
-Message types are inferred from the tool definitions via `InferUITools`, so `part.input` and `part.output` are fully typed in your part component — renaming a tool field is a build error, not a silent `undefined`.
-
-## Adding components
-
-```bash
-npx shadcn@latest add button
-```
-
-## License
-
-MIT — see [LICENSE](LICENSE).
+The chat endpoint is currently unauthenticated, so anyone who can reach it may consume Workers AI and Tavily quota. Add rate limiting and authentication before making the app broadly public. The search tool treats retrieved webpage text as untrusted and limits the amount of data passed to the model.
