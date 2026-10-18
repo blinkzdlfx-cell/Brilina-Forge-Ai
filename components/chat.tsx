@@ -3,12 +3,12 @@
 import * as React from "react"
 import { useChat } from "@ai-sdk/react"
 import { lastAssistantMessageIsCompleteWithToolCalls } from "ai"
-import { MenuIcon } from "lucide-react"
 
 import { type GatewayModel } from "@/lib/models"
 import { type ChatUIMessage } from "@/tools"
 import { ChatMessage } from "@/components/chat-message"
 import { ChatSidebar } from "@/components/chat-sidebar"
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { PromptForm } from "@/components/prompt-form"
 import { QuestionCard } from "@/components/question-card"
 import { StatusIcon } from "@/components/status-icon"
@@ -35,8 +35,6 @@ import { Trace, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace"
 
 export function Chat({ models }: { models: GatewayModel[] }) {
   const [model, setModel] = React.useState(models[0]?.id ?? "")
-  const [sidebarExpanded, setSidebarExpanded] = React.useState(true)
-  const [mobileSidebarOpen, setMobileSidebarOpen] = React.useState(false)
 
   const {
     messages,
@@ -94,31 +92,19 @@ export function Chat({ models }: { models: GatewayModel[] }) {
       stop()
     }
     setMessages([])
-    setMobileSidebarOpen(false)
   }, [isBusy, setMessages, stop])
 
   return (
-    <div className="flex min-h-0 w-full flex-1 overflow-hidden">
+    <SidebarProvider defaultOpen className="h-full min-h-0 w-full flex-1 overflow-hidden">
       <ChatSidebar
-        expanded={sidebarExpanded}
-        mobileOpen={mobileSidebarOpen}
         hasConversation={messages.length > 0}
         conversationTitle={conversationTitle}
-        onToggle={() => setSidebarExpanded((expanded) => !expanded)}
         onNewChat={startNewChat}
-        onCloseMobile={() => setMobileSidebarOpen(false)}
       />
 
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <SidebarInset className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3 md:hidden">
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Open sidebar"
-            onClick={() => setMobileSidebarOpen(true)}
-          >
-            <MenuIcon />
-          </Button>
+          <SidebarTrigger aria-label="Open sidebar" title="Open sidebar" />
           <span className="truncate text-sm font-medium">Brilina Forge</span>
         </div>
 
@@ -228,7 +214,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
             />
           </div>
         </div>
-      </main>
-    </div>
+      </SidebarInset>
+    </SidebarProvider>
   )
 }
