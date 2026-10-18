@@ -104,7 +104,6 @@ export function Chat({ models }: { models: GatewayModel[] }) {
       <SidebarInset className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
           <SidebarTrigger aria-label="Toggle sidebar" title="Toggle sidebar" />
-          <span className="truncate text-sm font-medium">Brilina Forge</span>
         </div>
 
         <div className="mx-auto flex min-h-0 w-full flex-1 flex-col">
