@@ -6,7 +6,8 @@ import { getCloudflareContext } from "@opennextjs/cloudflare"
  */
 export function getRuntimeEnv(name: string): string | undefined {
   try {
-    const value = getCloudflareContext().env[name]
+    const env = getCloudflareContext().env as Record<string, unknown>
+    const value = env[name]
     if (typeof value === "string" && value.length > 0) return value
   } catch {
     // There is no Cloudflare request context during ordinary Next.js development.
