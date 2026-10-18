@@ -53,6 +53,16 @@ export function Chat({ models }: { models: GatewayModel[] }) {
 
   const isBusy = status === "submitted" || status === "streaming"
 
+  const rawErrorMessage = error?.message ?? ""
+  const readableErrorMessage =
+    /<!doctype html|<html[\\s>]|cloudflare.*1102|worker exceeded (?:resource|cpu) limits/i.test(
+      rawErrorMessage
+    )
+      ? "The chat service reached its resource limit while preparing this request. Try again with a shorter recent conversation."
+      : rawErrorMessage.length > 500
+        ? `${rawErrorMessage.slice(0, 500)}…`
+        : rawErrorMessage || "The request could not be completed. Please try again."
+
   const lastMessage = messages.at(-1)
   const pendingQuestion =
     lastMessage?.role === "assistant"
@@ -72,8 +82,8 @@ export function Chat({ models }: { models: GatewayModel[] }) {
             <EmptyHeader>
               <EmptyTitle>What can I help with?</EmptyTitle>
               <EmptyDescription>
-                Pick a model and start chatting. Responses stream through the
-                Vercel AI Gateway.
+                Pick a model and start chatting. Responses stream through
+                Cloudflare Workers AI.
               </EmptyDescription>
             </EmptyHeader>
             <EmptyContent>
