@@ -14,7 +14,6 @@ import { QuestionCard } from "@/components/question-card"
 import { StatusIcon } from "@/components/status-icon"
 import { Suggestions } from "@/components/suggestions"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Button } from "@/components/ui/button"
 import {
   Empty,
   EmptyContent,
