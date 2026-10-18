@@ -34,7 +34,10 @@ export function ChatSidebar({
   return (
     <Sidebar collapsible="icon" aria-label="Conversation sidebar">
       <SidebarHeader className="gap-3 p-3">
-        <div className="flex h-8 items-center justify-start">
+        <div className="flex h-8 items-center gap-2">
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold group-data-[collapsible=icon]:hidden">
+            Brilina Forge
+          </span>
           <SidebarTrigger aria-label="Toggle sidebar" title="Toggle sidebar" />
         </div>
         <Button
