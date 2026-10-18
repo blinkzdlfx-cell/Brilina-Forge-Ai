@@ -6,7 +6,11 @@ This plan applies to `blinkzdlfx-cell/Brilina-Forge-Ai`. Keep the existing Next.
 - Next.js 16, React 19, TypeScript, Tailwind CSS v4, shadcn components, AI SDK.
 - Cloudflare Workers deployment through OpenNext.
 - Existing chat, ask-user tool, Tavily web-search tool, and a GitHub public-repository statistics tool.
-- No Neon database persistence or authentication flow was found in the current application audit.
+- The current application code does not yet connect its chat UI to Neon persistence or an authenticated session.
+- A Neon project named `Brilina Forge` already exists (`nameless-haze-58360399`) with a `production` branch. Neon Auth is already provisioned there through managed Better Auth; email/password and a shared Google provider are configured, but GitHub OAuth is not configured.
+- The existing production database already contains Forge-related tables for identities/sessions, users, workspaces/members, conversations/messages, repositories, runs, tool calls, GitHub OAuth connections, GitHub App installations, and usage records. Do not create duplicate tables or reset the schema.
+- The current `runs` schema records repository and branch snapshots but does not include the required immutable base commit SHA. This needs a versioned, additive migration after the existing schema and available test branches are audited.
+- Several prior test/recovery branches already exist in Neon. Inspect their current state before creating another; never apply experimental migrations directly to `production`.
 - Current CI at the start of this plan passed tests, lint, typecheck, and Worker build.
 
 ## Delivery rules
@@ -31,15 +35,17 @@ This plan applies to `blinkzdlfx-cell/Brilina-Forge-Ai`. Keep the existing Next.
 - Keep chat streaming, stop, retry, ask-user, tool rendering, and current model selection working.
 - Add component-level behavior tests where the current test setup supports them.
 
-## Batch 2 — Neon schema and server-side data layer
-- Design versioned, non-destructive migrations for users/identity mapping, conversations, messages, workspace context, agent runs, and activity events.
+## Batch 2 — Existing Neon schema audit and server-side data layer
+- Map the existing production schema and compare it with the app's intended data model before writing migrations. Reuse existing tables and constraints where possible; do not create duplicate users/conversations/runs tables.
+- Inspect the existing disposable test/recovery branches and choose a safe test target before any schema mutation.
 - Add server-only database access using the pooled Neon connection string and a Worker-compatible driver/runtime configuration.
-- Enforce ownership in every read and mutation; add indexes and foreign keys.
-- Add migration verification and tests; do not reset or recreate a production schema.
-- Keep local/dev and production migration instructions separate.
+- Add only missing, versioned, additive schema changes. The immutable run context must include a base commit SHA; verify whether a compatible field or equivalent exists before adding one.
+- Enforce user/workspace ownership in every read and mutation; add indexes/foreign keys only when the audit shows they are missing.
+- Test migrations and queries on a non-production branch. Keep production migration instructions separate and require explicit confirmation before applying production changes.
 
 ## Batch 3 — Authentication and protected routes
-- Integrate GitHub sign-in through a supported auth library compatible with Next.js/OpenNext and Neon.
+- Integrate the existing Neon-managed Better Auth service with the Next.js/OpenNext app rather than introducing a second auth system.
+- Configure GitHub OAuth for the intended `Continue with GitHub` flow only after the GitHub OAuth client ID/secret and trusted callback URL are available. The current Neon Auth config has email/password and a shared Google provider, but no GitHub provider.
 - Verify callback URLs, session handling, CSRF/state validation, cookie security, and required environment variables.
 - Protect conversation, run, and repository mutation routes on the server.
 - Add sign-out and unauthorized/error UI.
