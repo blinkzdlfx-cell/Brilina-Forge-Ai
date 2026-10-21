@@ -33,6 +33,30 @@ import {
 import { Trace, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace"
 
 export function Chat({ models }: { models: GatewayModel[] }) {
+  React.useEffect(() => {
+    const viewport = window.visualViewport
+    if (!viewport) return
+
+    const updateViewport = () => {
+      document.documentElement.style.setProperty(
+        "--forge-viewport-height",
+        `${viewport.height}px`
+      )
+    }
+
+    updateViewport()
+    viewport.addEventListener("resize", updateViewport)
+    viewport.addEventListener("scroll", updateViewport)
+    window.addEventListener("orientationchange", updateViewport)
+
+    return () => {
+      viewport.removeEventListener("resize", updateViewport)
+      viewport.removeEventListener("scroll", updateViewport)
+      window.removeEventListener("orientationchange", updateViewport)
+      document.documentElement.style.removeProperty("--forge-viewport-height")
+    }
+  }, [])
+
   const [model, setModel] = React.useState(models[0]?.id ?? "")
 
   const {
@@ -94,7 +118,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
   }, [isBusy, setMessages, stop])
 
   return (
-    <SidebarProvider defaultOpen className="h-full min-h-0 w-full flex-1 overflow-hidden">
+    <SidebarProvider defaultOpen className="h-full min-h-0 w-full flex-1 overflow-hidden overscroll-y-contain">
       <ChatSidebar
         hasConversation={messages.length > 0}
         conversationTitle={conversationTitle}
