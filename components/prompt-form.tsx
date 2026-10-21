@@ -1,10 +1,9 @@
 "use client"
 
 import * as React from "react"
-import { ArrowUpIcon, MicIcon, SquareIcon, XIcon } from "lucide-react"
+import { ArrowUpIcon, MicIcon, SquareIcon, XIcon, RotateCcwIcon } from "lucide-react"
 
 import { type GatewayModel } from "@/lib/models"
-import { ModelSelect } from "@/components/model-select"
 import {
   InputGroup,
   InputGroupAddon,
@@ -13,22 +12,48 @@ import {
 } from "@/components/ui/input-group"
 
 const MAX_RECORDING_BYTES = 20 * 1024 * 1024
+const MAX_RECORDING_MS = 3 * 60 * 1000
+const TRANSCRIPTION_TIMEOUT_MS = 45_000
+
+type VoiceState = "idle" | "recording" | "stopped" | "transcribing" | "failed"
+type TranscriptionIntent = "insert" | "send"
 
 function getRecordingMimeType() {
   if (typeof MediaRecorder === "undefined") return ""
-  const preferredTypes = [
-    "audio/webm;codecs=opus",
-    "audio/webm",
-    "audio/mp4",
-    "audio/ogg;codecs=opus",
-  ]
+  const preferredTypes = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"]
   return preferredTypes.find((type) => MediaRecorder.isTypeSupported(type)) ?? ""
 }
 
+function getAudioExtension(type: string) {
+  const mimeType = type.split(";")[0].toLowerCase()
+  if (mimeType === "audio/mp4") return "mp4"
+  if (mimeType === "audio/ogg") return "ogg"
+  if (mimeType === "audio/wav" || mimeType === "audio/x-wav") return "wav"
+  if (mimeType === "audio/mpeg" || mimeType === "audio/mpga") return "mp3"
+  if (mimeType === "audio/flac") return "flac"
+  return "webm"
+}
+
+function WaveformRing({ level }: { level: number }) {
+  return (
+    <span className="relative inline-flex size-8 items-center justify-center" aria-hidden="true">
+      <span
+        className="absolute inset-0 rounded-full border border-current opacity-60 transition-transform duration-75"
+        style={{ transform: `scale(${1 + level * 0.45})` }}
+      />
+      <span
+        className="absolute inset-1 rounded-full border-2 border-current opacity-80 transition-transform duration-75"
+        style={{ transform: `scale(${1 + level * 0.25})` }}
+      />
+      <MicIcon className="relative size-4" />
+    </span>
+  )
+}
+
 export function PromptForm({
-  models,
-  model,
-  onModelChange,
+  models: _models,
+  model: _model,
+  onModelChange: _onModelChange,
   isBusy,
   onSubmit,
   onStop,
@@ -43,13 +68,23 @@ export function PromptForm({
   onComposerFocus: () => void
 }) {
   const [input, setInput] = React.useState("")
-  const [isRecording, setIsRecording] = React.useState(false)
-  const [isTranscribing, setIsTranscribing] = React.useState(false)
+  const [voiceState, setVoiceState] = React.useState<VoiceState>("idle")
   const [voiceError, setVoiceError] = React.useState("")
+  const [waveformLevel, setWaveformLevel] = React.useState(0)
+  const [recordingSeconds, setRecordingSeconds] = React.useState(0)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const recorderRef = React.useRef<MediaRecorder | null>(null)
   const streamRef = React.useRef<MediaStream | null>(null)
   const chunksRef = React.useRef<Blob[]>([])
+  const audioBlobRef = React.useRef<Blob | null>(null)
+  const intentRef = React.useRef<TranscriptionIntent>("insert")
+  const abortRef = React.useRef<AbortController | null>(null)
+  const audioContextRef = React.useRef<AudioContext | null>(null)
+  const animationFrameRef = React.useRef<number | null>(null)
+  const startedAtRef = React.useRef(0)
+  const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const recordingTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null)
+  const cancelledRef = React.useRef(false)
 
   function resizeTextarea(textarea: HTMLTextAreaElement) {
     textarea.style.height = "auto"
@@ -61,7 +96,9 @@ export function PromptForm({
   function appendTranscript(transcript: string) {
     const textarea = textareaRef.current
     setInput((current) => {
-      const separator = current.trim() ? (current.endsWith(" ") || current.endsWith("\n") ? "" : " ") : ""
+      const separator = current.trim()
+        ? current.endsWith(" ") || current.endsWith("\n") ? "" : " "
+        : ""
       return `${current}${separator}${transcript}`
     })
     requestAnimationFrame(() => {
@@ -70,73 +107,128 @@ export function PromptForm({
     })
   }
 
-  async function transcribeRecording(blob: Blob) {
+  function stopVisualizers() {
+    if (animationFrameRef.current !== null) cancelAnimationFrame(animationFrameRef.current)
+    animationFrameRef.current = null
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current)
+    recordingTimerRef.current = null
+    setWaveformLevel(0)
+  }
+
+  function stopMicrophone() {
+    stopVisualizers()
+    streamRef.current?.getTracks().forEach((track) => track.stop())
+    streamRef.current = null
+    void audioContextRef.current?.close().catch(() => undefined)
+    audioContextRef.current = null
+  }
+
+  function startWaveform(stream: MediaStream) {
+    try {
+      const context = new AudioContext()
+      audioContextRef.current = context
+      const analyser = context.createAnalyser()
+      analyser.fftSize = 256
+      const source = context.createMediaStreamSource(stream)
+      source.connect(analyser)
+      const samples = new Uint8Array(analyser.frequencyBinCount)
+      const tick = () => {
+        analyser.getByteTimeDomainData(samples)
+        let total = 0
+        for (const sample of samples) {
+          const normalized = (sample - 128) / 128
+          total += normalized * normalized
+        }
+        setWaveformLevel(Math.min(1, Math.sqrt(total / samples.length) * 3.5))
+        animationFrameRef.current = requestAnimationFrame(tick)
+      }
+      void context.resume().then(tick).catch(() => undefined)
+    } catch {
+      // Recording still works if the browser does not support Web Audio.
+    }
+  }
+
+  async function transcribeRecording(blob: Blob, intent: TranscriptionIntent) {
+    if (cancelledRef.current) return
     if (!blob.size) {
       setVoiceError("No audio was captured. Try recording again.")
+      setVoiceState("failed")
       return
     }
     if (blob.size > MAX_RECORDING_BYTES) {
       setVoiceError("This recording is too large. Please record a shorter message.")
+      setVoiceState("failed")
       return
     }
 
-    setIsTranscribing(true)
+    setVoiceState("transcribing")
     setVoiceError("")
-    try {
-      const formData = new FormData()
-      const mimeType = blob.type.split(";")[0] || "audio/webm"
-      const extension = mimeType === "audio/mp4" ? "mp4"
-        : mimeType === "audio/ogg" ? "ogg"
-        : mimeType === "audio/wav" || mimeType === "audio/x-wav" ? "wav"
-        : mimeType === "audio/mpeg" || mimeType === "audio/mpga" ? "mp3"
-        : mimeType === "audio/flac" ? "flac"
-        : "webm"
-      formData.append("file", blob, `recording.${extension}`)
+    const controller = new AbortController()
+    abortRef.current = controller
+    timeoutRef.current = setTimeout(() => controller.abort("timeout"), TRANSCRIPTION_TIMEOUT_MS)
 
+    try {
       const response = await fetch("/api/transcribe", {
         method: "POST",
-        body: formData,
+        headers: {
+          "Content-Type": blob.type || "application/octet-stream",
+          "X-Audio-Filename": `recording.${getAudioExtension(blob.type || "audio/webm")}`,
+        },
+        body: blob,
+        signal: controller.signal,
       })
       const result = (await response.json().catch(() => null)) as
         | { text?: unknown; error?: unknown }
         | null
 
       if (!response.ok) {
-        throw new Error(
-          typeof result?.error === "string"
-            ? result.error
-            : "Transcription failed. Please try again."
-        )
+        throw new Error(typeof result?.error === "string" ? result.error : "Transcription failed. Please try again.")
       }
       if (typeof result?.text !== "string" || !result.text.trim()) {
-        throw new Error("No speech was detected. Try speaking more clearly.")
+        throw new Error("Didn't catch anything. Try speaking more clearly.")
       }
-      appendTranscript(result.text.trim())
+
+      const transcript = result.text.trim()
+      audioBlobRef.current = null
+      setVoiceState("idle")
+      if (intent === "send") {
+        const combined = [input.trim(), transcript].filter(Boolean).join(input.trim() ? " " : "")
+        onSubmit(combined)
+        setInput("")
+        if (textareaRef.current) {
+          textareaRef.current.style.height = "auto"
+          textareaRef.current.style.overflowY = "hidden"
+        }
+      } else {
+        appendTranscript(transcript)
+      }
     } catch (error) {
+      if (cancelledRef.current) return
+      setVoiceState("failed")
       setVoiceError(
-        error instanceof Error
-          ? error.message
-          : "Transcription failed. Please try again."
+        controller.signal.aborted
+          ? "Transcription timed out or was cancelled. Retry the audio."
+          : error instanceof Error ? error.message : "Transcription failed. Please try again."
       )
     } finally {
-      setIsTranscribing(false)
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      timeoutRef.current = null
+      abortRef.current = null
     }
   }
 
-  function stopRecording() {
+  function finalizeRecording(intent: TranscriptionIntent) {
     const recorder = recorderRef.current
-    if (recorder && recorder.state !== "inactive") recorder.stop()
-    setIsRecording(false)
+    if (!recorder || recorder.state === "inactive") return
+    intentRef.current = intent
+    setVoiceState("stopped")
+    recorder.stop()
   }
 
-  async function toggleRecording() {
-    if (isRecording) {
-      stopRecording()
-      return
-    }
-    if (isBusy || isTranscribing) return
+  async function startRecording() {
+    if (isBusy || voiceState === "transcribing" || voiceState === "recording") return
     setVoiceError("")
-
+    cancelledRef.current = false
     if (
       typeof navigator === "undefined" ||
       !navigator.mediaDevices?.getUserMedia ||
@@ -147,36 +239,49 @@ export function PromptForm({
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      })
       streamRef.current = stream
       chunksRef.current = []
       const mimeType = getRecordingMimeType()
-      const recorder = mimeType
-        ? new MediaRecorder(stream, { mimeType })
-        : new MediaRecorder(stream)
+      const recorder = new MediaRecorder(
+        stream,
+        mimeType ? { mimeType, audioBitsPerSecond: 64_000 } : { audioBitsPerSecond: 64_000 }
+      )
       recorderRef.current = recorder
       recorder.ondataavailable = (event) => {
         if (event.data.size) chunksRef.current.push(event.data)
       }
       recorder.onerror = () => {
+        stopMicrophone()
+        recorderRef.current = null
+        setVoiceState("failed")
         setVoiceError("Recording failed. Check microphone permissions and try again.")
-        setIsRecording(false)
-        stream.getTracks().forEach((track) => track.stop())
-        streamRef.current = null
       }
       recorder.onstop = () => {
         const audioBlob = new Blob(chunksRef.current, {
-          type: recorder.mimeType || "audio/webm",
+          type: recorder.mimeType || mimeType || "audio/webm",
         })
         chunksRef.current = []
-        stream.getTracks().forEach((track) => track.stop())
-        streamRef.current = null
         recorderRef.current = null
-        void transcribeRecording(audioBlob)
+        stopMicrophone()
+        if (cancelledRef.current) return
+        audioBlobRef.current = audioBlob
+        void transcribeRecording(audioBlob, intentRef.current)
       }
-      recorder.start()
-      setIsRecording(true)
+      recorder.start(1000)
+      startedAtRef.current = Date.now()
+      setRecordingSeconds(0)
+      setVoiceState("recording")
+      startWaveform(stream)
+      recordingTimerRef.current = setInterval(() => {
+        const elapsed = Date.now() - startedAtRef.current
+        setRecordingSeconds(Math.floor(elapsed / 1000))
+        if (elapsed >= MAX_RECORDING_MS) finalizeRecording(intentRef.current)
+      }, 250)
     } catch (error) {
+      setVoiceState("idle")
       setVoiceError(
         error instanceof Error && error.name === "NotAllowedError"
           ? "Microphone access was denied. Allow microphone access in your browser and try again."
@@ -185,18 +290,63 @@ export function PromptForm({
     }
   }
 
+  function cancelVoice() {
+    cancelledRef.current = true
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    timeoutRef.current = null
+    abortRef.current?.abort()
+    const recorder = recorderRef.current
+    if (recorder && recorder.state !== "inactive") {
+      recorder.onstop = null
+      recorder.stop()
+    }
+    stopMicrophone()
+    recorderRef.current = null
+    chunksRef.current = []
+    audioBlobRef.current = null
+    setVoiceState("idle")
+    setVoiceError("")
+    setRecordingSeconds(0)
+  }
+
+  function retryTranscription() {
+    const blob = audioBlobRef.current
+    if (!blob) {
+      setVoiceState("idle")
+      setVoiceError("The audio is no longer available. Record a new message.")
+      return
+    }
+    cancelledRef.current = false
+    void transcribeRecording(blob, intentRef.current)
+  }
+
   React.useEffect(() => {
     return () => {
+      cancelledRef.current = true
+      abortRef.current?.abort()
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
       const recorder = recorderRef.current
-      if (recorder && recorder.state !== "inactive") recorder.stop()
-      streamRef.current?.getTracks().forEach((track) => track.stop())
+      if (recorder && recorder.state !== "inactive") {
+        recorder.onstop = null
+        recorder.stop()
+      }
+      stopMicrophone()
     }
   }, [])
 
   function handleSubmit(event?: React.FormEvent) {
     event?.preventDefault()
+    if (voiceState === "recording") {
+      finalizeRecording("send")
+      return
+    }
+    if (voiceState === "failed" && audioBlobRef.current) {
+      intentRef.current = "send"
+      retryTranscription()
+      return
+    }
     const text = input.trim()
-    if (!text || isBusy || isTranscribing || isRecording) return
+    if (!text || isBusy || voiceState === "transcribing" || voiceState === "stopped") return
     onSubmit(text)
     setInput("")
     if (textareaRef.current) {
@@ -205,136 +355,103 @@ export function PromptForm({
     }
   }
 
+  const isVoiceActive = voiceState !== "idle"
+  const isRecording = voiceState === "recording"
+  const isTranscribing = voiceState === "transcribing"
+
   return (
     <form onSubmit={handleSubmit} className="w-full">
       <InputGroup>
         <InputGroupTextarea
           ref={textareaRef}
-          placeholder="Send a message…"
+          placeholder={isRecording ? "Listening…" : "Send a message…"}
           className="max-h-40 min-h-11 overflow-y-hidden p-3.5"
           value={input}
           onChange={(event) => {
             setInput(event.target.value)
             resizeTextarea(event.currentTarget)
           }}
-          onFocus={() => {
-            onComposerFocus()
-            // The chat shell follows VisualViewport resize events when the
-            // mobile keyboard opens. Avoid scrollIntoView here: it can scroll
-            // the document behind the keyboard and hide the send controls.
-          }}
+          onFocus={() => onComposerFocus()}
           onKeyDown={(event) => {
-            if (
-              event.key !== "Enter" ||
-              event.nativeEvent.isComposing ||
-              event.shiftKey
-            ) {
-              return
-            }
-
-            const isTouchDevice = window.matchMedia(
-              "(hover: none) and (pointer: coarse)"
-            ).matches
+            if (event.key !== "Enter" || event.nativeEvent.isComposing || event.shiftKey) return
+            const isTouchDevice = window.matchMedia("(hover: none) and (pointer: coarse)").matches
             const isNarrowViewport = window.innerWidth <= 768
-
-            // Mobile keyboards use Enter/Return for a newline. Only the Send
-            // button submits on touch devices; desktop Enter submits normally.
             if (isTouchDevice || isNarrowViewport) return
-
             event.preventDefault()
             handleSubmit()
           }}
         />
         <InputGroupAddon align="block-end">
-          <ModelSelect
-            models={models}
-            value={model}
-            onValueChange={onModelChange}
-          />
           {voiceError && (
-            <span role="status" className="max-w-48 text-xs text-destructive">
+            <span role="status" className="max-w-64 text-xs text-destructive">
               {voiceError}
             </span>
           )}
-          <InputGroupButton
-            type="button"
-            size="icon-sm"
-            variant={isRecording ? "destructive" : "outline"}
-            className={isRecording ? "ml-auto" : ""}
-            aria-label={
-              isRecording
-                ? "Stop recording"
-                : isTranscribing
-                  ? "Transcribing audio"
-                  : "Record voice message"
-            }
-            title={
-              isRecording
-                ? "Stop recording"
-                : isTranscribing
-                  ? "Transcribing…"
-                  : "Record voice message"
-            }
-            disabled={isBusy || isTranscribing}
-            onClick={() => void toggleRecording()}
-          >
-            {isRecording ? (
-              <SquareIcon />
-            ) : isTranscribing ? (
-              <span className="size-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
-            ) : (
-              <MicIcon />
-            )}
-          </InputGroupButton>
-          {isBusy ? (
-            <InputGroupButton
-              type="button"
-              size="icon-sm"
-              variant="outline"
-              aria-label="Stop generating"
-              className="ml-auto"
-              onClick={onStop}
-            >
-              <SquareIcon />
-            </InputGroupButton>
-          ) : (
-            <InputGroupButton
-              type="submit"
-              size="icon-sm"
-              variant="default"
-              aria-label="Send message"
-              className="ml-auto"
-              disabled={!input.trim() || isTranscribing || isRecording}
-            >
-              <ArrowUpIcon />
-            </InputGroupButton>
+          {isVoiceActive && (
+            <div className="flex w-full items-center gap-2 px-1 py-1 text-xs text-muted-foreground">
+              {isRecording ? <WaveformRing level={waveformLevel} /> : null}
+              <span className="min-w-0 flex-1">
+                {isRecording
+                  ? `Recording ${Math.floor(recordingSeconds / 60)}:${String(recordingSeconds % 60).padStart(2, "0")}`
+                  : voiceState === "stopped"
+                    ? "Preparing audio…"
+                    : isTranscribing
+                      ? "Transcribing audio…"
+                      : voiceState === "failed"
+                        ? "Couldn't transcribe. Tap to retry."
+                        : "Audio ready"}
+              </span>
+              {voiceState === "failed" && (
+                <InputGroupButton type="button" size="icon-sm" variant="outline" aria-label="Retry transcription" onClick={retryTranscription}>
+                  <RotateCcwIcon />
+                </InputGroupButton>
+              )}
+              <InputGroupButton type="button" size="icon-sm" variant="ghost" aria-label="Cancel audio" title="Cancel audio" onClick={cancelVoice}>
+                <XIcon />
+              </InputGroupButton>
+              {isRecording && (
+                <InputGroupButton type="button" size="icon-sm" variant="outline" aria-label="Stop and transcribe without sending" title="Stop and transcribe" onClick={() => finalizeRecording("insert")}>
+                  <SquareIcon />
+                </InputGroupButton>
+              )}
+            </div>
           )}
+          <div className="flex w-full items-center gap-2">
+            {isTranscribing && (
+              <span className="text-xs text-muted-foreground">Please wait…</span>
+            )}
+            {!isVoiceActive && (
+              <InputGroupButton
+                type="button"
+                size="icon-sm"
+                variant="outline"
+                aria-label="Record voice message"
+                title="Record voice message"
+                disabled={isBusy}
+                onClick={() => void startRecording()}
+              >
+                <MicIcon />
+              </InputGroupButton>
+            )}
+            {isBusy ? (
+              <InputGroupButton type="button" size="icon-sm" variant="outline" aria-label="Stop generating" className="ml-auto" onClick={onStop}>
+                <SquareIcon />
+              </InputGroupButton>
+            ) : (
+              <InputGroupButton
+                type="submit"
+                size="icon-sm"
+                variant="default"
+                aria-label={isRecording ? "Send audio and transcribe" : isTranscribing ? "Transcribing audio" : "Send message"}
+                className="ml-auto"
+                disabled={isTranscribing || voiceState === "stopped" || (!input.trim() && !isRecording && !(voiceState === "failed" && audioBlobRef.current))}
+              >
+                {isRecording ? <ArrowUpIcon /> : isTranscribing ? <span className="size-3 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <ArrowUpIcon />}
+              </InputGroupButton>
+            )}
+          </div>
         </InputGroupAddon>
       </InputGroup>
-      {isRecording && (
-        <div className="mt-2 flex items-center gap-2 px-2 text-xs text-muted-foreground" role="status">
-          <span className="size-2 animate-pulse rounded-full bg-destructive" />
-          Recording. Select stop when you are finished.
-          <button
-            type="button"
-            className="ml-auto inline-flex items-center gap-1 rounded-full px-2 py-1 hover:bg-muted"
-            onClick={() => {
-              if (recorderRef.current && recorderRef.current.state !== "inactive") {
-                recorderRef.current.onstop = null
-                recorderRef.current.stop()
-              }
-              streamRef.current?.getTracks().forEach((track) => track.stop())
-              recorderRef.current = null
-              streamRef.current = null
-              chunksRef.current = []
-              setIsRecording(false)
-            }}
-          >
-            <XIcon className="size-3" />
-            Cancel
-          </button>
-        </div>
-      )}
     </form>
   )
 }
