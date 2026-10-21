@@ -22,17 +22,17 @@ export default function RootLayout({
       lang="en"
       suppressHydrationWarning
       className={cn(
-        "antialiased",
+        "h-full antialiased",
         fontMono.variable,
         "font-sans",
         fontSans.variable
       )}
     >
-      <body>
+      <body className="h-full overflow-hidden">
         <ThemeProvider>
           <TooltipProvider>
             <div
-              className="flex flex-col"
+              className="flex h-full min-h-0 flex-col overflow-hidden"
               style={{ height: "var(--forge-viewport-height, 100dvh)" }}
             >
               {children}
