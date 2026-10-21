@@ -1,11 +1,7 @@
 "use client"
 
-import {
-  MessageSquareIcon,
-  PlusIcon,
-} from "lucide-react"
+import { MessageSquareIcon } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
 import {
   Sidebar,
   SidebarContent,
@@ -17,43 +13,25 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
-  SidebarTrigger,
 } from "@/components/ui/sidebar"
 
 type ChatSidebarProps = {
   hasConversation: boolean
   conversationTitle: string
-  onNewChat: () => void
 }
 
 export function ChatSidebar({
   hasConversation,
   conversationTitle,
-  onNewChat,
 }: ChatSidebarProps) {
   return (
     <Sidebar collapsible="icon" aria-label="Conversation sidebar">
-      <SidebarHeader className="gap-3 p-3">
+      <SidebarHeader className="p-3">
         <div className="flex h-8 items-center gap-2">
           <span className="min-w-0 flex-1 truncate text-sm font-semibold group-data-[collapsible=icon]:hidden">
             Brilina Forge
           </span>
-          <SidebarTrigger
-            className="ml-auto hidden md:inline-flex"
-            aria-label="Toggle sidebar"
-            title="Toggle sidebar"
-          />
         </div>
-        <Button
-          variant="outline"
-          className="w-full justify-start gap-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
-          onClick={onNewChat}
-          aria-label="New chat"
-          title="New chat"
-        >
-          <PlusIcon className="size-4 shrink-0" />
-          <span className="group-data-[collapsible=icon]:hidden">New chat</span>
-        </Button>
       </SidebarHeader>
 
       <SidebarContent>
