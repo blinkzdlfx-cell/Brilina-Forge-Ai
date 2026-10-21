@@ -45,15 +45,36 @@ export function PromptForm({
           className="p-3.5"
           value={input}
           onChange={(event) => setInput(event.target.value)}
+          onFocus={(event) => {
+            // Let the mobile keyboard finish opening before bringing the composer
+            // into the visible visual viewport. Avoid scrolling the whole page.
+            window.setTimeout(() => {
+              event.currentTarget?.scrollIntoView({
+                block: "nearest",
+                behavior: "smooth",
+              })
+            }, 250)
+          }}
           onKeyDown={(event) => {
             if (
-              event.key === "Enter" &&
-              !event.shiftKey &&
-              !event.nativeEvent.isComposing
+              event.key !== "Enter" ||
+              event.nativeEvent.isComposing ||
+              event.shiftKey
             ) {
-              event.preventDefault()
-              handleSubmit()
+              return
             }
+
+            const isTouchDevice = window.matchMedia(
+              "(hover: none) and (pointer: coarse)"
+            ).matches
+            const isNarrowViewport = window.innerWidth <= 768
+
+            // Mobile keyboards use Enter/Return for a newline. Only the Send
+            // button submits on touch devices; desktop Enter submits normally.
+            if (isTouchDevice || isNarrowViewport) return
+
+            event.preventDefault()
+            handleSubmit()
           }}
         />
         <InputGroupAddon align="block-end">
