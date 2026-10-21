@@ -32,7 +32,10 @@ export default function RootLayout({
       <body>
         <ThemeProvider>
           <TooltipProvider>
-            <div className="flex h-svh flex-col">
+            <div
+              className="flex flex-col"
+              style={{ height: "var(--forge-viewport-height, 100dvh)" }}
+            >
               <SiteHeader />
               {children}
             </div>
