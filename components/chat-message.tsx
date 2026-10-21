@@ -51,7 +51,8 @@ export function ChatMessage({
       .map((part) => part.text)
       .join("")
     const imageParts = message.parts.filter(
-      (part) => part.type === "file" && part.mediaType.startsWith("image/")
+      (part): part is Extract<ChatMessagePart, { type: "file" }> =>
+        part.type === "file" && part.mediaType.startsWith("image/")
     )
     const isLongUserMessage = userText.length > 360
 
