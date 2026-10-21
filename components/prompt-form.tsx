@@ -66,7 +66,6 @@ export function PromptForm({
   const [voiceState, setVoiceState] = React.useState<VoiceState>("idle")
   const [voiceError, setVoiceError] = React.useState("")
   const [waveformLevel, setWaveformLevel] = React.useState(0)
-  const [recordingSeconds, setRecordingSeconds] = React.useState(0)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const recorderRef = React.useRef<MediaRecorder | null>(null)
   const streamRef = React.useRef<MediaStream | null>(null)
@@ -76,7 +75,6 @@ export function PromptForm({
   const abortRef = React.useRef<AbortController | null>(null)
   const audioContextRef = React.useRef<AudioContext | null>(null)
   const animationFrameRef = React.useRef<number | null>(null)
-  const startedAtRef = React.useRef(0)
   const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const recordingTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null)
   const cancelledRef = React.useRef(false)
@@ -276,13 +274,11 @@ export function PromptForm({
         void transcribeRecording(audioBlob, intentRef.current)
       }
       recorder.start(1000)
-      startedAtRef.current = Date.now()
-      setRecordingSeconds(0)
       setVoiceState("recording")
       startWaveform(stream)
+      const startedAt = Date.now()
       recordingTimerRef.current = setInterval(() => {
-        const elapsed = Date.now() - startedAtRef.current
-        setRecordingSeconds(Math.floor(elapsed / 1000))
+        const elapsed = Date.now() - startedAt
         if (elapsed >= MAX_RECORDING_MS) finalizeRecording(intentRef.current)
       }, 250)
     } catch (error) {
@@ -313,7 +309,6 @@ export function PromptForm({
     setHasAudio(false)
     setVoiceState("idle")
     setVoiceError("")
-    setRecordingSeconds(0)
   }
 
   function retryTranscription() {
@@ -379,7 +374,7 @@ export function PromptForm({
       <InputGroup>
         <InputGroupTextarea
           ref={textareaRef}
-          placeholder={isRecording ? "Listening…" : "Send a message…"}
+          placeholder="Send a message…"
           className="max-h-40 min-h-11 overflow-y-hidden p-3.5"
           value={input}
           onChange={(event) => {
@@ -403,40 +398,36 @@ export function PromptForm({
               {voiceError}
             </span>
           )}
-          {isVoiceActive && (
-            <div className="flex w-full items-center gap-2 px-1 py-1 text-xs text-muted-foreground">
-              {isRecording ? <WaveformRing level={waveformLevel} /> : null}
-              <span className="min-w-0 flex-1">
-                {isRecording
-                  ? `Recording ${Math.floor(recordingSeconds / 60)}:${String(recordingSeconds % 60).padStart(2, "0")}`
-                  : voiceState === "stopped"
-                    ? "Preparing audio…"
-                    : isTranscribing
-                      ? "Transcribing audio…"
-                      : voiceState === "failed"
-                        ? "Couldn't transcribe. Tap to retry."
-                        : "Audio ready"}
-              </span>
-              {voiceState === "failed" && (
-                <InputGroupButton type="button" size="icon-sm" variant="outline" aria-label="Retry transcription" onClick={retryTranscription}>
-                  <RotateCcwIcon />
+          <div className="flex w-full min-w-0 items-center gap-1.5">
+            {isVoiceActive ? (
+              <>
+                {isRecording ? <WaveformRing level={waveformLevel} /> : null}
+                <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                  {isRecording
+                    ? "Listening…"
+                    : voiceState === "stopped"
+                      ? "Transcribing…"
+                      : isTranscribing
+                        ? "Transcribing…"
+                        : voiceState === "failed"
+                          ? "Couldn't transcribe. Tap to retry."
+                          : "Audio ready"}
+                </span>
+                {voiceState === "failed" && (
+                  <InputGroupButton type="button" size="icon-sm" variant="outline" aria-label="Retry transcription" onClick={retryTranscription}>
+                    <RotateCcwIcon />
+                  </InputGroupButton>
+                )}
+                <InputGroupButton type="button" size="icon-sm" variant="ghost" className="shrink-0" aria-label="Cancel audio" title="Cancel audio" onClick={cancelVoice}>
+                  <XIcon />
                 </InputGroupButton>
-              )}
-              <InputGroupButton type="button" size="icon-sm" variant="ghost" aria-label="Cancel audio" title="Cancel audio" onClick={cancelVoice}>
-                <XIcon />
-              </InputGroupButton>
-              {isRecording && (
-                <InputGroupButton type="button" size="icon-sm" variant="outline" aria-label="Stop and transcribe without sending" title="Stop and transcribe" onClick={() => finalizeRecording("insert")}>
-                  <SquareIcon />
-                </InputGroupButton>
-              )}
-            </div>
-          )}
-          <div className="flex w-full items-center gap-2">
-            {isTranscribing && (
-              <span className="text-xs text-muted-foreground">Please wait…</span>
-            )}
-            {!isVoiceActive && (
+                {isRecording && (
+                  <InputGroupButton type="button" size="icon-sm" variant="outline" className="shrink-0" aria-label="Stop and transcribe without sending" title="Stop and transcribe" onClick={() => finalizeRecording("insert")}>
+                    <SquareIcon />
+                  </InputGroupButton>
+                )}
+              </>
+            ) : (
               <InputGroupButton
                 type="button"
                 size="icon-sm"

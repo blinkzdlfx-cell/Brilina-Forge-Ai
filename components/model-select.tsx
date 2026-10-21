@@ -34,7 +34,7 @@ export function ModelSelect({
         if (typeof next === "string") onValueChange(next)
       }}
     >
-      <SelectTrigger aria-label="Model" className="bg-background">
+      <SelectTrigger aria-label="Model" className="h-8 w-full min-w-0 gap-1 overflow-hidden px-1.5 text-xs bg-background sm:px-2 [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:truncate">
         <SelectValue />
       </SelectTrigger>
       <SelectContent alignItemWithTrigger={false}>
