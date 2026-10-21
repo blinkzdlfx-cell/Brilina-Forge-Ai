@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 
-import { MODELS } from "@/lib/models"
+import { getAvailableModels } from "@/lib/models"
 import { Chat } from "@/components/chat"
 
 export const metadata: Metadata = {
@@ -10,5 +10,5 @@ export const metadata: Metadata = {
 }
 
 export default function Page() {
-  return <Chat models={MODELS} />
+  return <Chat models={getAvailableModels()} />
 }
