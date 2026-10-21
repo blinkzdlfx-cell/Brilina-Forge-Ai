@@ -61,6 +61,7 @@ export function PromptForm({
   onComposerFocus: () => void
 }) {
   const [input, setInput] = React.useState("")
+  const [hasAudio, setHasAudio] = React.useState(false)
   const inputRef = React.useRef("")
   const [voiceState, setVoiceState] = React.useState<VoiceState>("idle")
   const [voiceError, setVoiceError] = React.useState("")
@@ -185,6 +186,7 @@ export function PromptForm({
 
       const transcript = result.text.trim()
       audioBlobRef.current = null
+      setHasAudio(false)
       setVoiceState("idle")
       if (intent === "send") {
         const currentInput = inputRef.current.trim()
@@ -270,6 +272,7 @@ export function PromptForm({
         stopMicrophone()
         if (cancelledRef.current) return
         audioBlobRef.current = audioBlob
+        setHasAudio(true)
         void transcribeRecording(audioBlob, intentRef.current)
       }
       recorder.start(1000)
@@ -307,6 +310,7 @@ export function PromptForm({
     recorderRef.current = null
     chunksRef.current = []
     audioBlobRef.current = null
+    setHasAudio(false)
     setVoiceState("idle")
     setVoiceError("")
     setRecordingSeconds(0)
@@ -456,7 +460,7 @@ export function PromptForm({
                 variant="default"
                 aria-label={isRecording ? "Send audio and transcribe" : isTranscribing ? "Transcribing audio" : "Send message"}
                 className="ml-auto"
-                disabled={isTranscribing || voiceState === "stopped" || (!input.trim() && !isRecording && !(voiceState === "failed" && audioBlobRef.current))}
+                disabled={isTranscribing || voiceState === "stopped" || (!input.trim() && !isRecording && !(voiceState === "failed" && hasAudio))}
               >
                 {isRecording ? <ArrowUpIcon /> : isTranscribing ? <span className="size-3 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <ArrowUpIcon />}
               </InputGroupButton>
