@@ -17,9 +17,20 @@ function jsonError(message: string, status: number) {
   return Response.json({ error: message }, { status })
 }
 
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = ""
+  const chunkSize = 0x8000
+
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize))
+  }
+
+  return btoa(binary)
+}
+
 export async function POST(request: Request) {
-  // Explicit opt-in keeps this cost-bearing endpoint off by default while the
-  // app's authentication and rate limiting are still being implemented.
+  // Keep this cost-bearing endpoint off by default while authentication and
+  // rate limiting are still being implemented.
   if (getRuntimeEnv("VOICE_TRANSCRIPTION_ENABLED") !== "true") {
     return jsonError("Voice transcription is temporarily disabled.", 503)
   }
@@ -29,9 +40,13 @@ export async function POST(request: Request) {
     return jsonError("Audio must be 20 MB or smaller. Record a shorter message.", 413)
   }
 
-  const apiKey = getRuntimeEnv("OPENAI_API_KEY")
-  if (!apiKey) {
-    return jsonError("Voice transcription is not configured yet. Add the OPENAI_API_KEY secret.", 503)
+  const accountId = getRuntimeEnv("CLOUDFLARE_ACCOUNT_ID")
+  const apiToken = getRuntimeEnv("CLOUDFLARE_AI_API_TOKEN")
+  if (!accountId || !apiToken) {
+    return jsonError(
+      "Voice transcription is not configured. Check the Cloudflare Workers AI credentials.",
+      503
+    )
   }
 
   let formData: FormData
@@ -58,27 +73,31 @@ export async function POST(request: Request) {
     return jsonError("This audio format is not supported. Try recording with a current browser.", 415)
   }
 
-  const upstreamForm = new FormData()
-  upstreamForm.append("file", file, file.name || "recording.webm")
-  upstreamForm.append("model", "whisper-1")
-  upstreamForm.append("response_format", "json")
-
   let upstream: Response
   try {
-    upstream = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}` },
-      body: upstreamForm,
-      signal: AbortSignal.timeout(25_000),
-    })
+    const audio = bytesToBase64(new Uint8Array(await file.arrayBuffer()))
+    upstream = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/openai/whisper`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ audio, task: "transcribe" }),
+        signal: AbortSignal.timeout(25_000),
+      }
+    )
   } catch {
     return jsonError("The transcription service could not be reached. Try again.", 502)
   }
 
   if (!upstream.ok) {
-    // Do not return upstream error bodies; they may contain implementation details.
     if (upstream.status === 401 || upstream.status === 403) {
-      return jsonError("The OpenAI API key was rejected. Check the OPENAI_API_KEY secret.", 503)
+      return jsonError(
+        "Cloudflare rejected the Workers AI credentials. Check the API token permissions.",
+        503
+      )
     }
     if (upstream.status === 429) {
       return jsonError("The transcription service is busy or its quota is exhausted. Try again later.", 429)
@@ -86,16 +105,19 @@ export async function POST(request: Request) {
     return jsonError("Transcription failed. Try a shorter recording and try again.", 502)
   }
 
-  let result: { text?: unknown }
+  let response: { success?: unknown; result?: { text?: unknown } }
   try {
-    result = (await upstream.json()) as { text?: unknown }
+    response = (await upstream.json()) as {
+      success?: unknown
+      result?: { text?: unknown }
+    }
   } catch {
     return jsonError("The transcription service returned an invalid response.", 502)
   }
 
-  if (typeof result.text !== "string") {
+  if (response.success === false || typeof response.result?.text !== "string") {
     return jsonError("The transcription service returned no transcript.", 502)
   }
 
-  return Response.json({ text: result.text })
+  return Response.json({ text: response.result.text })
 }
