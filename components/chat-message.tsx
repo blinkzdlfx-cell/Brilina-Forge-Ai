@@ -36,11 +36,13 @@ export function ChatMessage({
   onRetry?: () => void
   collapseExpandedMessagesKey?: number
 }) {
-  const [userMessageExpanded, setUserMessageExpanded] = React.useState(false)
-
-  React.useEffect(() => {
-    setUserMessageExpanded(false)
-  }, [collapseExpandedMessagesKey])
+  const [userMessageExpansion, setUserMessageExpansion] = React.useState({
+    key: collapseExpandedMessagesKey,
+    expanded: false,
+  })
+  const userMessageExpanded =
+    userMessageExpansion.key === collapseExpandedMessagesKey &&
+    userMessageExpansion.expanded
   if (message.role === "user") {
     const userText = message.parts
       .filter((part) => part.type === "text")
@@ -66,7 +68,12 @@ export function ChatMessage({
                 <button
                   type="button"
                   className="mt-2 text-xs font-medium underline underline-offset-4"
-                  onClick={() => setUserMessageExpanded((expanded) => !expanded)}
+                  onClick={() =>
+                    setUserMessageExpansion({
+                      key: collapseExpandedMessagesKey,
+                      expanded: !userMessageExpanded,
+                    })
+                  }
                   aria-expanded={userMessageExpanded}
                 >
                   {userMessageExpanded ? "Show less" : "Show more"}
