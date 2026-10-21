@@ -58,6 +58,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
   }, [])
 
   const [model, setModel] = React.useState(models[0]?.id ?? "")
+  const [collapseExpandedMessagesKey, setCollapseExpandedMessagesKey] = React.useState(0)
 
   const {
     messages,
@@ -170,6 +171,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
                       >
                         <ChatMessage
                           message={message}
+                          collapseExpandedMessagesKey={collapseExpandedMessagesKey}
                           isStreaming={
                             isBusy && message.id === lastMessage?.id
                           }
@@ -237,6 +239,9 @@ export function Chat({ models }: { models: GatewayModel[] }) {
                 sendMessage({ text }, { body: { model: resolvedModel } })
               }
               onStop={() => stop()}
+              onComposerFocus={() =>
+                setCollapseExpandedMessagesKey((key) => key + 1)
+              }
             />
           </div>
         </div>
