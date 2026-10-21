@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { EllipsisVertical, SquarePen } from "lucide-react"
+import { Ellipsis, SquarePen } from "lucide-react"
 
 import { type GatewayModel } from "@/lib/models"
 import { ModelSelect } from "@/components/model-select"
@@ -46,12 +46,12 @@ export function ChatHeaderControls({
   return (
     <div
       ref={menuRef}
-      className="relative flex min-w-0 max-w-[calc(100vw-4.5rem)] items-center gap-0.5 rounded-full border border-border/70 bg-background/85 p-1 shadow-lg backdrop-blur-xl dark:bg-zinc-900/80 sm:max-w-none sm:gap-1"
+      className="relative flex min-w-0 max-w-[calc(100vw-3.75rem)] items-center gap-0.5 overflow-visible rounded-full border border-border/70 bg-background/85 p-1 shadow-lg backdrop-blur-xl dark:bg-zinc-900/80 sm:max-w-none sm:gap-1"
     >
       <span className="shrink-0 px-1 text-[9px] font-semibold tracking-wide sm:px-2 sm:text-[10px]">
         BRILINAFORGE
       </span>
-      <div className="w-[4.75rem] min-w-0 shrink sm:w-36 sm:max-w-44">
+      <div className="w-[4.25rem] min-w-0 flex-1 sm:w-36 sm:flex-none sm:max-w-44">
         <ModelSelect models={models} value={model} onValueChange={onModelChange} />
       </div>
       <Button
@@ -76,7 +76,7 @@ export function ChatHeaderControls({
         aria-haspopup="menu"
         aria-expanded={menuOpen}
       >
-        <EllipsisVertical className="size-4" />
+        <Ellipsis className="size-4" />
       </Button>
       {menuOpen && (
         <div
