@@ -105,8 +105,8 @@ export function Chat({ models }: { models: GatewayModel[] }) {
   const handleSendMessage = React.useCallback(
     (text: string, files: File[] = []) => {
       let requestModel = resolvedModel
-      if (files.length > 0) {
-        const totalImageCount = recentImageCount + files.length
+      const totalImageCount = recentImageCount + files.length
+      if (totalImageCount > 0) {
         const currentModel = models.find((item) => item.id === requestModel)
         if (
           !currentModel?.capabilities?.includes("vision") ||
@@ -120,7 +120,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
             )?.id ?? ""
         }
         if (!requestModel) {
-          setAttachmentError("No configured vision model supports this image selection. Configure a vision provider or reduce the number of images.")
+          setAttachmentError("No configured vision model supports the images in this conversation. Configure a vision provider, reduce the number of images, or start a new chat.")
           return
         }
       }
