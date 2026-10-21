@@ -118,7 +118,7 @@ export function PromptForm({
 
   function startWaveform(stream: MediaStream) {
     try {
-      const context = new AudioContext()
+      const context = audioContextRef.current ?? new AudioContext()
       audioContextRef.current = context
       const analyser = context.createAnalyser()
       analyser.fftSize = 256
@@ -232,6 +232,11 @@ export function PromptForm({
     }
 
     try {
+      // Create and resume the audio context directly from the microphone tap,
+      // before the permission prompt can consume the browser's user activation.
+      const context = new AudioContext()
+      audioContextRef.current = context
+      await context.resume()
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       })
@@ -274,6 +279,7 @@ export function PromptForm({
         if (elapsed >= MAX_RECORDING_MS) finalizeRecording(intentRef.current)
       }, 250)
     } catch (error) {
+      stopMicrophone()
       setVoiceState("idle")
       setVoiceError(
         error instanceof Error && error.name === "NotAllowedError"
@@ -323,7 +329,11 @@ export function PromptForm({
         recorder.onstop = null
         recorder.stop()
       }
-      stopMicrophone()
+      stopVisualizers()
+      streamRef.current?.getTracks().forEach((track) => track.stop())
+      streamRef.current = null
+      void audioContextRef.current?.close().catch(() => undefined)
+      audioContextRef.current = null
     }
   }, [])
 
