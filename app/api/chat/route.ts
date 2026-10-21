@@ -7,6 +7,8 @@ import {
   validateUIMessages,
 } from "ai"
 
+import { prepareBoundedContext } from "@/lib/context-budget.mjs"
+import { readJsonWithinLimit } from "@/lib/bounded-request.mjs"
 import { DEFAULT_MODEL, getLanguageModel, isModelAllowed } from "@/lib/models"
 import { getTools, type ChatUIMessage } from "@/tools"
 
@@ -17,6 +19,8 @@ export const maxDuration = 30
 const MAX_REQUEST_BYTES = 48 * 1024
 const MAX_CONTEXT_MESSAGES = 6
 const MAX_PARTS_PER_MESSAGE = 24
+const MAX_MESSAGE_TEXT_CHARS = 12_000
+const MAX_CONTEXT_TEXT_CHARS = 32_000
 const MAX_OUTPUT_TOKENS = 4096
 const MAX_TOOL_STEPS = 4
 
@@ -63,16 +67,22 @@ export async function POST(req: Request) {
     return jsonError(requestId, "This conversation is too large. Start a new chat or shorten the recent context.", 413)
   }
 
-  let body: unknown
-  try {
-    body = await req.json()
-  } catch (error) {
-    logChatDiagnostic(requestId, "body_parse_failed", {
+  const parsedBody = await readJsonWithinLimit(req, MAX_REQUEST_BYTES)
+  if (!parsedBody.ok) {
+    logChatDiagnostic(requestId, "body_rejected", {
       elapsedMs: elapsed(),
-      ...errorDetails(error),
+      reason: parsedBody.reason,
+      bytesRead: parsedBody.bytesRead,
     })
+    if (parsedBody.reason === "too_large") {
+      return jsonError(requestId, "This request exceeds the 48 KiB limit. Shorten the recent conversation or remove large attachments.", 413)
+    }
+    if (parsedBody.reason === "read_error") {
+      return jsonError(requestId, "Could not read the request body. Please try again.", 400)
+    }
     return jsonError(requestId, "Invalid JSON body.", 400)
   }
+  const body: unknown = parsedBody.value
 
   const model = (body as { model?: unknown })?.model
   const modelId = typeof model === "string" ? model : DEFAULT_MODEL
@@ -99,19 +109,30 @@ export async function POST(req: Request) {
     return jsonError(requestId, "Send at least one chat message.", 400)
   }
 
-  // Cheap bounds checks before AI SDK schema validation. Do not stringify the
-  // whole history: doing so adds avoidable CPU work on the Free Worker.
-  const recentMessages = rawMessages.slice(-MAX_CONTEXT_MESSAGES)
-  for (const message of recentMessages) {
-    if (
-      !message ||
-      typeof message !== "object" ||
-      !Array.isArray((message as { parts?: unknown }).parts) ||
-      (message as { parts: unknown[] }).parts.length > MAX_PARTS_PER_MESSAGE
-    ) {
-      return jsonError(requestId, "Invalid or oversized message structure.", 400)
+  // Bound history before SDK validation/conversion. Keep the newest messages
+  // in chronological order and reject oversized text rather than silently
+  // dropping context that may contain the user's actual requirements.
+  const context = prepareBoundedContext(rawMessages, {
+    maxMessages: MAX_CONTEXT_MESSAGES,
+    maxPartsPerMessage: MAX_PARTS_PER_MESSAGE,
+    maxTextCharsPerMessage: MAX_MESSAGE_TEXT_CHARS,
+    maxTotalTextChars: MAX_CONTEXT_TEXT_CHARS,
+  })
+  if (!context.ok) {
+    logChatDiagnostic(requestId, "context_rejected", {
+      elapsedMs: elapsed(),
+      reason: context.reason,
+      textChars: context.textChars,
+    })
+    if (context.reason === "message_text_too_large") {
+      return jsonError(requestId, "A recent message is too long. Split it into smaller messages and retry.", 413)
     }
+    if (context.reason === "context_text_too_large") {
+      return jsonError(requestId, "The recent conversation is too large. Start a new chat or shorten earlier messages.", 413)
+    }
+    return jsonError(requestId, "Invalid or oversized message structure.", 400)
   }
+  const recentMessages = context.messages
 
   const tools = getTools()
   let messages: ChatUIMessage[]
