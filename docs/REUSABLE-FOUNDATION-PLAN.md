@@ -101,8 +101,8 @@ Proposed behavior and retention:
 - Store audio server-side when transcription fails, with a random opaque ID, MIME type, creation time, status, and expiry metadata. Do not expose public object URLs.
 - A future Settings section named **Failed transcription audio** lists retryable audio clips. Each clip has a three-dot menu with **Re-transcribe** and **Delete**.
 - Failed clips expire after 7 days by default (configurable to 14 days if needed). Cleanup must be automated and must not depend on someone opening Settings.
-- When re-transcription succeeds, return the transcript to the composer/chat flow and delete the retained audio object. Do not leave a second stored audio copy after successful recovery.
-- Any successfully transcribed audio retained for audit/recovery should have a hard 30-day maximum lifetime and then be deleted automatically. Prefer deleting successful audio immediately unless a clear product need requires the 30-day window.
+- When a clip from the **Failed transcription audio** list is re-transcribed successfully, return the transcript to the composer/chat flow and delete that failed audio object immediately.
+- Audio from a normal successful transcription may remain in server storage for up to 30 days, then must be deleted automatically. Store its expiry timestamp explicitly and enforce the 30-day hard limit.
 - Use authenticated server routes and per-user ownership checks for listing, playback, retry, and deletion. Store metadata in a database (prefer the app's planned Neon PostgreSQL layer) rather than relying on object names as the index.
 - Add scheduled cleanup, size/count limits, retention tests, and explicit user-facing retention disclosure before enabling persistent storage.
 
