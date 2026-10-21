@@ -55,7 +55,7 @@ export function ChatMessage({
     return (
       <Message align="end">
         <MessageContent>
-          <div ref={userMessageRef}>
+          <div ref={userMessageRef} className="flex w-full justify-end">
             <Bubble align="end" variant="muted">
               <BubbleContent>
                 <div
