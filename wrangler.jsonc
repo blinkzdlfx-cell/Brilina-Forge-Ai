@@ -5,7 +5,8 @@
   "compatibility_date": "2026-10-18",
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
-    "CLOUDFLARE_ACCOUNT_ID": "8b694686fda6c12625423d5055aa84b1"
+    "CLOUDFLARE_ACCOUNT_ID": "8b694686fda6c12625423d5055aa84b1",
+    "VOICE_TRANSCRIPTION_ENABLED": "true"
   },
   "assets": {
     "directory": ".open-next/assets",
