@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { ArrowUpIcon, MicIcon, SquareIcon, XIcon, RotateCcwIcon } from "lucide-react"
+import { ArrowUpIcon, ImagePlusIcon, MicIcon, SquareIcon, XIcon, RotateCcwIcon } from "lucide-react"
 
 import {
   InputGroup,
@@ -13,6 +13,10 @@ import {
 const MAX_RECORDING_BYTES = 20 * 1024 * 1024
 const MAX_RECORDING_MS = 3 * 60 * 1000
 const TRANSCRIPTION_TIMEOUT_MS = 45_000
+const MAX_IMAGE_COUNT = 3
+const MAX_IMAGE_FILE_BYTES = 1024 * 1024
+const MAX_TOTAL_IMAGE_BYTES = 3 * 1024 * 1024
+const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"])
 
 type VoiceState = "idle" | "recording" | "stopped" | "transcribing" | "failed"
 type TranscriptionIntent = "insert" | "send"
@@ -54,13 +58,18 @@ export function PromptForm({
   onSubmit,
   onStop,
   onComposerFocus,
+  canAttachImages,
 }: {
   isBusy: boolean
-  onSubmit: (text: string) => void
+  onSubmit: (text: string, files?: File[]) => void
   onStop: () => void
+  canAttachImages: boolean
   onComposerFocus: () => void
 }) {
   const [input, setInput] = React.useState("")
+  const [selectedImages, setSelectedImages] = React.useState<File[]>([])
+  const [imageError, setImageError] = React.useState("")
+  const imageInputRef = React.useRef<HTMLInputElement>(null)
   const [hasAudio, setHasAudio] = React.useState(false)
   const inputRef = React.useRef("")
   const [voiceState, setVoiceState] = React.useState<VoiceState>("idle")
@@ -189,7 +198,9 @@ export function PromptForm({
       if (intent === "send") {
         const currentInput = inputRef.current.trim()
         const combined = [currentInput, transcript].filter(Boolean).join(currentInput ? " " : "")
-        onSubmit(combined)
+        onSubmit(combined || "Please analyze the attached image(s) and describe what is important.", selectedImages)
+        setSelectedImages([])
+        setImageError("")
         inputRef.current = ""
         setInput("")
         if (textareaRef.current) {
@@ -343,6 +354,47 @@ export function PromptForm({
     }
   }, [])
 
+  function handleImageSelection(event: React.ChangeEvent<HTMLInputElement>) {
+    const incoming = Array.from(event.currentTarget.files ?? [])
+    event.currentTarget.value = ""
+    if (!incoming.length) return
+
+    const combined = [...selectedImages, ...incoming]
+    if (combined.length > MAX_IMAGE_COUNT) {
+      setImageError("Attach up to 3 images per message.")
+      return
+    }
+    if (combined.some((file) => !ALLOWED_IMAGE_TYPES.has(file.type))) {
+      setImageError("Use PNG, JPEG, or WebP images only.")
+      return
+    }
+    if (combined.some((file) => file.size > MAX_IMAGE_FILE_BYTES)) {
+      setImageError("Each image must be 1 MiB or smaller.")
+      return
+    }
+    if (combined.reduce((total, file) => total + file.size, 0) > MAX_TOTAL_IMAGE_BYTES) {
+      setImageError("All attached images must total 3 MiB or less.")
+      return
+    }
+
+    setSelectedImages(combined)
+    setImageError("")
+  }
+
+  function removeSelectedImage(index: number) {
+    setSelectedImages((current) => current.filter((_, currentIndex) => currentIndex !== index))
+    setImageError("")
+  }
+
+  const imagePreviews = React.useMemo(
+    () => selectedImages.map((file) => ({ file, url: URL.createObjectURL(file) })),
+    [selectedImages]
+  )
+
+  React.useEffect(() => {
+    return () => imagePreviews.forEach(({ url }) => URL.revokeObjectURL(url))
+  }, [imagePreviews])
+
   function handleSubmit(event?: React.FormEvent) {
     event?.preventDefault()
     if (voiceState === "recording") {
@@ -355,8 +407,10 @@ export function PromptForm({
       return
     }
     const text = inputRef.current.trim()
-    if (!text || isBusy || voiceState === "transcribing" || voiceState === "stopped") return
-    onSubmit(text)
+    if ((!text && selectedImages.length === 0) || isBusy || voiceState === "transcribing" || voiceState === "stopped") return
+    onSubmit(text || "Please analyze the attached image(s) and describe what is important.", selectedImages)
+    setSelectedImages([])
+    setImageError("")
     inputRef.current = ""
     setInput("")
     if (textareaRef.current) {
@@ -371,6 +425,24 @@ export function PromptForm({
 
   return (
     <form onSubmit={handleSubmit} className="w-full">
+      {imagePreviews.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-2" aria-label="Attached images">
+          {imagePreviews.map(({ file, url }, index) => (
+            <div key={`${file.name}-${file.size}-${index}`} className="relative size-16 overflow-hidden rounded-lg border border-border bg-muted">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={url} alt={file.name} className="size-full object-cover" />
+              <button
+                type="button"
+                aria-label={`Remove ${file.name}`}
+                className="absolute right-0.5 top-0.5 rounded-full bg-background/90 p-0.5 text-foreground shadow"
+                onClick={() => removeSelectedImage(index)}
+              >
+                <XIcon className="size-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       <InputGroup>
         <InputGroupTextarea
           ref={textareaRef}
@@ -393,12 +465,35 @@ export function PromptForm({
           }}
         />
         <InputGroupAddon align="block-end">
-          {voiceError && (
+          {(voiceError || imageError) && (
             <span role="status" className="max-w-64 text-xs text-destructive">
-              {voiceError}
+              {imageError || voiceError}
             </span>
           )}
           <div className="flex w-full min-w-0 items-center gap-1.5">
+            {canAttachImages && (
+              <>
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  multiple
+                  className="hidden"
+                  onChange={handleImageSelection}
+                />
+                <InputGroupButton
+                  type="button"
+                  size="icon-sm"
+                  variant="outline"
+                  aria-label="Attach images"
+                  title="Attach images (PNG, JPEG, WebP; up to 3)"
+                  disabled={isBusy}
+                  onClick={() => imageInputRef.current?.click()}
+                >
+                  <ImagePlusIcon />
+                </InputGroupButton>
+              </>
+            )}
             {isVoiceActive ? (
               <>
                 {isRecording ? <WaveformRing level={waveformLevel} /> : null}
@@ -451,7 +546,7 @@ export function PromptForm({
                 variant="default"
                 aria-label={isRecording ? "Send audio and transcribe" : isTranscribing ? "Transcribing audio" : "Send message"}
                 className="ml-auto"
-                disabled={isTranscribing || voiceState === "stopped" || (!input.trim() && !isRecording && !(voiceState === "failed" && hasAudio))}
+                disabled={isTranscribing || voiceState === "stopped" || (!input.trim() && selectedImages.length === 0 && !isRecording && !(voiceState === "failed" && hasAudio))}
               >
                 {isRecording ? <ArrowUpIcon /> : isTranscribing ? <span className="size-3 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <ArrowUpIcon />}
               </InputGroupButton>

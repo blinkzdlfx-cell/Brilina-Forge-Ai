@@ -63,6 +63,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
   }, [])
 
   const [model, setModel] = React.useState(models[0]?.id ?? "")
+  const [attachmentError, setAttachmentError] = React.useState("")
   const [collapseExpandedMessagesKey, setCollapseExpandedMessagesKey] = React.useState(0)
 
   const {
@@ -85,6 +86,42 @@ export function Chat({ models }: { models: GatewayModel[] }) {
     : (models[0]?.id ?? "")
 
   const isBusy = status === "submitted" || status === "streaming"
+
+  const handleSendMessage = React.useCallback(
+    (text: string, files: File[] = []) => {
+      let requestModel = resolvedModel
+      if (files.length > 0) {
+        const currentModel = models.find((item) => item.id === requestModel)
+        if (
+          !currentModel?.capabilities?.includes("vision") ||
+          files.length > (currentModel.maxImages ?? 0)
+        ) {
+          requestModel =
+            models.find(
+              (item) =>
+                item.capabilities?.includes("vision") &&
+                (item.maxImages ?? 0) >= files.length
+            )?.id ?? ""
+        }
+        if (!requestModel) {
+          setAttachmentError("No configured vision model supports this image selection. Configure a vision provider or reduce the number of images.")
+          return
+        }
+      }
+
+      setAttachmentError("")
+      if (requestModel !== resolvedModel) setModel(requestModel)
+
+      if (files.length > 0) {
+        const transfer = new DataTransfer()
+        files.forEach((file) => transfer.items.add(file))
+        void sendMessage({ text, files: transfer.files }, { body: { model: requestModel } })
+      } else {
+        void sendMessage({ text }, { body: { model: requestModel } })
+      }
+    },
+    [models, resolvedModel, sendMessage]
+  )
 
   const rawErrorMessage = error?.message ?? ""
   const readableErrorMessage =
@@ -231,17 +268,16 @@ export function Chat({ models }: { models: GatewayModel[] }) {
           )}
 
           <div className="mx-auto flex w-full max-w-2xl shrink-0 flex-col gap-2 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6">
-            {error && (
+            {(error || attachmentError) && (
               <Alert variant="destructive">
                 <AlertTitle>Request failed</AlertTitle>
-                <AlertDescription>{readableErrorMessage}</AlertDescription>
+                <AlertDescription>{attachmentError || readableErrorMessage}</AlertDescription>
               </Alert>
             )}
             <PromptForm
               isBusy={isBusy}
-              onSubmit={(text) =>
-                sendMessage({ text }, { body: { model: resolvedModel } })
-              }
+              canAttachImages={models.some((item) => item.capabilities?.includes("vision"))}
+              onSubmit={handleSendMessage}
               onStop={() => stop()}
               onComposerFocus={() =>
                 setCollapseExpandedMessagesKey((key) => key + 1)

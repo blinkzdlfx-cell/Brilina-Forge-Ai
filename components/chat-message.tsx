@@ -50,6 +50,9 @@ export function ChatMessage({
       .filter((part) => part.type === "text")
       .map((part) => part.text)
       .join("")
+    const imageParts = message.parts.filter(
+      (part) => part.type === "file" && part.mediaType.startsWith("image/")
+    )
     const isLongUserMessage = userText.length > 360
 
     return (
@@ -58,15 +61,31 @@ export function ChatMessage({
           <div ref={userMessageRef} className="flex w-full justify-end">
             <Bubble align="end" variant="muted">
               <BubbleContent>
-                <div
-                  className={
-                    isLongUserMessage && !userMessageExpanded
-                      ? "max-h-36 overflow-hidden whitespace-pre-wrap"
-                      : "whitespace-pre-wrap"
-                  }
-                >
-                  {userText}
-                </div>
+                {imageParts.length > 0 && (
+                  <div className="mb-2 flex flex-wrap gap-2">
+                    {imageParts.map((part, index) => (
+                      <div key={`${part.filename ?? "image"}-${index}`} className="overflow-hidden rounded-lg border border-border/60">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={part.url}
+                          alt={part.filename ?? "Attached image"}
+                          className="max-h-56 max-w-full object-contain"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {userText && (
+                  <div
+                    className={
+                      isLongUserMessage && !userMessageExpanded
+                        ? "max-h-36 overflow-hidden whitespace-pre-wrap"
+                        : "whitespace-pre-wrap"
+                    }
+                  >
+                    {userText}
+                  </div>
+                )}
                 {isLongUserMessage && (
                   <button
                     type="button"
