@@ -8,15 +8,16 @@ import {
 } from "ai"
 
 import { prepareBoundedContext } from "@/lib/context-budget.mjs"
+import { validateImageParts } from "@/lib/image-input.mjs"
 import { readJsonWithinLimit } from "@/lib/bounded-request.mjs"
-import { DEFAULT_MODEL, getLanguageModel, isModelAllowed } from "@/lib/models"
+import { DEFAULT_MODEL, getLanguageModel, getModelImageLimit, isModelAllowed, isVisionModel } from "@/lib/models"
 import { getTools, type ChatUIMessage } from "@/tools"
 
 export const maxDuration = 30
 
 // Keep the Free Worker request path bounded. Six recent messages preserve useful
 // context without repeatedly validating the entire client-side transcript.
-const MAX_REQUEST_BYTES = 48 * 1024
+const MAX_REQUEST_BYTES = 5 * 1024 * 1024
 const MAX_CONTEXT_MESSAGES = 6
 const MAX_PARTS_PER_MESSAGE = 24
 const MAX_MESSAGE_TEXT_CHARS = 12_000
@@ -64,7 +65,7 @@ export async function POST(req: Request) {
   })
 
   if (contentLength > MAX_REQUEST_BYTES) {
-    return jsonError(requestId, "This conversation is too large. Start a new chat or shorten the recent context.", 413)
+    return jsonError(requestId, "This request exceeds the 5 MiB limit. Start a new chat or use smaller images.", 413)
   }
 
   const parsedBody = await readJsonWithinLimit(req, MAX_REQUEST_BYTES)
@@ -75,7 +76,7 @@ export async function POST(req: Request) {
       bytesRead: parsedBody.bytesRead,
     })
     if (parsedBody.reason === "too_large") {
-      return jsonError(requestId, "This request exceeds the 48 KiB limit. Shorten the recent conversation or remove large attachments.", 413)
+      return jsonError(requestId, "This request exceeds the 5 MiB limit. Shorten the recent conversation or use smaller images.", 413)
     }
     if (parsedBody.reason === "read_error") {
       return jsonError(requestId, "Could not read the request body. Please try again.", 400)
@@ -134,6 +135,33 @@ export async function POST(req: Request) {
   }
   const recentMessages = context.messages
 
+  const imageValidation = validateImageParts(recentMessages, {
+    modelSupportsVision: isVisionModel(modelId),
+    maxImages: getModelImageLimit(modelId),
+  })
+  if (!imageValidation.ok) {
+    logChatDiagnostic(requestId, "image_input_rejected", {
+      elapsedMs: elapsed(),
+      reason: imageValidation.reason,
+      imageCount: imageValidation.imageCount,
+      totalImageBytes: imageValidation.totalImageBytes,
+      model: modelId,
+    })
+    if (imageValidation.reason === "model_not_vision") {
+      return jsonError(requestId, "Choose a vision-capable model to send images.", 400)
+    }
+    if (imageValidation.reason === "unsupported_file_type") {
+      return jsonError(requestId, "Use PNG, JPEG, or WebP images only.", 415)
+    }
+    if (imageValidation.reason === "invalid_image_data") {
+      return jsonError(requestId, "An attached image is invalid. Please select it again.", 400)
+    }
+    if (imageValidation.reason === "too_many_images") {
+      return jsonError(requestId, `This model supports up to ${getModelImageLimit(modelId)} images per request.`, 413)
+    }
+    return jsonError(requestId, "Images must be 1 MiB or smaller each and 3 MiB total.", 413)
+  }
+
   const tools = getTools()
   let messages: ChatUIMessage[]
   try {
@@ -179,6 +207,8 @@ export async function POST(req: Request) {
     tools,
     stopWhen: isStepCount(MAX_TOOL_STEPS),
     maxOutputTokens: MAX_OUTPUT_TOKENS,
+    maxRetries: 1,
+    timeout: { totalMs: 27_000, stepMs: 25_000 },
     abortSignal: req.signal,
     onChunk: ({ chunk }) => {
       // Record time-to-first-text without logging the generated content.
