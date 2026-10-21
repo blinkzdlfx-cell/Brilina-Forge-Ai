@@ -7,6 +7,7 @@ import { lastAssistantMessageIsCompleteWithToolCalls } from "ai"
 import { type GatewayModel } from "@/lib/models"
 import { type ChatUIMessage } from "@/tools"
 import { ChatMessage } from "@/components/chat-message"
+import { ChatHeaderControls } from "@/components/chat-header-controls"
 import { ChatSidebar } from "@/components/chat-sidebar"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { PromptForm } from "@/components/prompt-form"
@@ -127,16 +128,18 @@ export function Chat({ models }: { models: GatewayModel[] }) {
       <ChatSidebar
         hasConversation={messages.length > 0}
         conversationTitle={conversationTitle}
-        onNewChat={startNewChat}
       />
 
       <SidebarInset className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start justify-between p-3 sm:p-4">
           <SidebarTrigger
-            className="md:hidden"
+            className="pointer-events-auto size-10 rounded-full border border-border/70 bg-background/85 shadow-lg backdrop-blur-xl hover:bg-muted"
             aria-label="Toggle sidebar"
             title="Toggle sidebar"
           />
+          <div className="pointer-events-auto">
+            <ChatHeaderControls onNewChat={startNewChat} />
+          </div>
         </div>
 
         <div className="mx-auto flex min-h-0 w-full flex-1 flex-col overflow-hidden">
@@ -166,7 +169,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
             <MessageScrollerProvider>
               <MessageScroller className="min-h-0 flex-1">
                 <MessageScrollerViewport>
-                  <MessageScrollerContent className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-6 py-6">
+                  <MessageScrollerContent className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-6 pb-6 pt-16">
                     {messages.map((message) => (
                       <MessageScrollerItem
                         key={message.id}
