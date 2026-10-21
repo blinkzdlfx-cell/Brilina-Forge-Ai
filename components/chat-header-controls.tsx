@@ -48,7 +48,7 @@ export function ChatHeaderControls({
       ref={menuRef}
       className="relative flex items-center gap-1 rounded-full border border-border/70 bg-background/85 p-1 shadow-lg backdrop-blur-xl dark:bg-zinc-900/80"
     >
-      <span className="hidden px-3 text-xs font-semibold tracking-wide sm:inline">
+      <span className="px-1.5 text-[10px] font-semibold tracking-wide sm:px-3 sm:text-xs">
         BRILINAFORGE
       </span>
       <div className="max-w-44 sm:max-w-52">
