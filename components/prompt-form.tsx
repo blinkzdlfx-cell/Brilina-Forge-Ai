@@ -3,7 +3,6 @@
 import * as React from "react"
 import { ArrowUpIcon, MicIcon, SquareIcon, XIcon, RotateCcwIcon } from "lucide-react"
 
-import { type GatewayModel } from "@/lib/models"
 import {
   InputGroup,
   InputGroupAddon,
@@ -51,17 +50,11 @@ function WaveformRing({ level }: { level: number }) {
 }
 
 export function PromptForm({
-  models: _models,
-  model: _model,
-  onModelChange: _onModelChange,
   isBusy,
   onSubmit,
   onStop,
   onComposerFocus,
 }: {
-  models: GatewayModel[]
-  model: string
-  onModelChange: (model: string) => void
   isBusy: boolean
   onSubmit: (text: string) => void
   onStop: () => void
