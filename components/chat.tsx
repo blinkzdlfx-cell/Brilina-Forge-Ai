@@ -131,13 +131,13 @@ export function Chat({ models }: { models: GatewayModel[] }) {
       />
 
       <SidebarInset className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start justify-between p-3 sm:p-4">
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex min-w-0 items-start justify-between gap-2 p-3 sm:p-4">
           <SidebarTrigger
             className="pointer-events-auto size-10 rounded-full border border-border/70 bg-background/85 shadow-lg backdrop-blur-xl hover:bg-muted"
             aria-label="Toggle sidebar"
             title="Toggle sidebar"
           />
-          <div className="pointer-events-auto">
+          <div className="pointer-events-auto ml-auto min-w-0 max-w-[calc(100vw-5.75rem)] sm:max-w-none">
             <ChatHeaderControls models={models} model={resolvedModel} onModelChange={setModel} onNewChat={startNewChat} />
           </div>
         </div>
