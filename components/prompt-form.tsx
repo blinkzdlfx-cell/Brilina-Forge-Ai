@@ -19,6 +19,7 @@ export function PromptForm({
   isBusy,
   onSubmit,
   onStop,
+  onComposerFocus,
 }: {
   models: GatewayModel[]
   model: string
@@ -26,8 +27,17 @@ export function PromptForm({
   isBusy: boolean
   onSubmit: (text: string) => void
   onStop: () => void
+  onComposerFocus: () => void
 }) {
   const [input, setInput] = React.useState("")
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null)
+
+  function resizeTextarea(textarea: HTMLTextAreaElement) {
+    textarea.style.height = "auto"
+    const maxHeight = 160
+    textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`
+    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden"
+  }
 
   function handleSubmit(event?: React.FormEvent) {
     event?.preventDefault()
@@ -35,17 +45,27 @@ export function PromptForm({
     if (!text || isBusy) return
     onSubmit(text)
     setInput("")
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto"
+      textareaRef.current.style.overflowY = "hidden"
+    }
   }
 
   return (
     <form onSubmit={handleSubmit}>
       <InputGroup>
         <InputGroupTextarea
+          ref={textareaRef}
           placeholder="Send a message…"
-          className="p-3.5"
+          className="max-h-40 min-h-11 overflow-y-hidden p-3.5"
           value={input}
-          onChange={(event) => setInput(event.target.value)}
+          onChange={(event) => {
+            setInput(event.target.value)
+            resizeTextarea(event.currentTarget)
+          }}
           onFocus={(event) => {
+            onComposerFocus()
+            resizeTextarea(event.currentTarget)
             // Capture the textarea before the React event handler returns.
             const textarea = event.currentTarget
             // Let the mobile keyboard finish opening before bringing the composer
