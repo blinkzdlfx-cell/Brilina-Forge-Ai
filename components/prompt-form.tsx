@@ -309,7 +309,6 @@ export function PromptForm({
     setHasAudio(false)
     setVoiceState("idle")
     setVoiceError("")
-    setRecordingSeconds(0)
   }
 
   function retryTranscription() {
