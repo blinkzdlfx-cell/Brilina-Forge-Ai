@@ -6,7 +6,7 @@ A streaming AI assistant built with Next.js, the AI SDK, and shadcn components. 
 
 - **Chat model:** Cloudflare Workers AI `@cf/zai-org/glm-4.7-flash`, accessed through Cloudflare's OpenAI-compatible endpoint.
 - **Web search:** Tavily's independent search API. The server requests at most five results, only accepts HTTPS result URLs, truncates excerpts, applies a timeout, and returns safe errors for provider failures.
-- **Voice input:** The browser records a short audio clip and uploads it to `POST /api/transcribe`. The server sends the audio to Cloudflare Workers AI's `@cf/openai/whisper` model and inserts the returned text into the composer for review. Voice input uses the existing server-side Cloudflare Workers AI credentials and requires the explicit `VOICE_TRANSCRIPTION_ENABLED=true` flag.
+- **Voice input:** The browser records audio and sends raw audio bytes to `POST /api/transcribe`. Cloudflare Workers AI's `@cf/openai/whisper-large-v3-turbo` transcribes it through the `AI` binding. Stop transcribes and inserts text without sending; Send transcribes and sends through the existing chat flow; X cancels. Failed audio can be retried during the current page session.
 - **Citations:** The assistant is instructed to cite web-supported claims with Markdown links to the exact URLs returned by Tavily.
 - **Existing UI:** The responsive chat UI, streamed messages, model selector, GitHub repository lookup, and interactive question tool are retained.
 
@@ -38,7 +38,7 @@ cp .env.example .env.local
 pnpm dev
 ```
 
-Voice input requires microphone permission and a secure context (HTTPS; localhost is accepted for local development). Recordings are uploaded to the application's server endpoint and then sent to Cloudflare Workers AI Whisper for transcription. The application does not intentionally store recordings or transcripts. The endpoint limits uploads to 20 MB. Workers AI usage is subject to Cloudflare's free daily allocation and applicable plan pricing.
+Voice input requires microphone permission and a secure context (HTTPS; localhost is accepted for local development). Recordings are uploaded to the application's server endpoint and transcribed by Cloudflare Workers AI. Failed audio is retained in page memory for retry during the current session; durable server-side audio storage is planned separately and is not yet implemented. The endpoint limits uploads to 20 MB and transcription attempts time out after 45 seconds. Workers AI usage is subject to Cloudflare's current allocation and applicable plan pricing.
 
 ## Cloudflare Workers deployment
 
@@ -71,4 +71,4 @@ The chat endpoint is currently unauthenticated, so anyone who can reach it may c
 
 ## Reusable foundation plan
 
-See [docs/REUSABLE-FOUNDATION-PLAN.md](docs/REUSABLE-FOUNDATION-PLAN.md) for the architecture audit, authentication decision, modularization plan, and starter-template acceptance criteria.
+See [docs/REUSABLE-FOUNDATION-PLAN.md](docs/REUSABLE-FOUNDATION-PLAN.md) for the architecture audit, authentication decision, modularization plan, starter-template acceptance criteria, and the future server-side failed-audio retention design.
