@@ -9,6 +9,8 @@ export interface TavilySearchResponse {
   query: string
   results: TavilySearchResult[]
   error?: string
+  partial?: boolean
+  deduplicatedCount?: number
 }
 
 export function searchTavily(

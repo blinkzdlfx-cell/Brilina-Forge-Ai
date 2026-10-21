@@ -22,6 +22,8 @@ export function getWebSearch() {
         }),
       ),
       error: z.string().optional(),
+      partial: z.boolean().optional(),
+      deduplicatedCount: z.number().int().nonnegative().optional(),
     }),
     execute: async ({ query }, { abortSignal }) =>
       searchTavily(query, {
