@@ -46,10 +46,12 @@ export function PromptForm({
           value={input}
           onChange={(event) => setInput(event.target.value)}
           onFocus={(event) => {
+            // Capture the textarea before the React event handler returns.
+            const textarea = event.currentTarget
             // Let the mobile keyboard finish opening before bringing the composer
             // into the visible visual viewport. Avoid scrolling the whole page.
             window.setTimeout(() => {
-              event.currentTarget?.scrollIntoView({
+              textarea.scrollIntoView({
                 block: "nearest",
                 behavior: "smooth",
               })
