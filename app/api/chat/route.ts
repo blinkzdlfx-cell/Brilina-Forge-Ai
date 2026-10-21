@@ -149,6 +149,7 @@ export async function POST(req: Request) {
     return jsonError(requestId, "Could not prepare the conversation for the AI provider.", 500)
   }
 
+  let firstTextChunkLogged = false
   const result = streamText({
     model: languageModel,
     system:
@@ -158,6 +159,30 @@ export async function POST(req: Request) {
     stopWhen: isStepCount(MAX_TOOL_STEPS),
     maxOutputTokens: MAX_OUTPUT_TOKENS,
     abortSignal: req.signal,
+    onChunk: ({ chunk }) => {
+      // Record time-to-first-text without logging the generated content.
+      if (chunk.type === "text" && !firstTextChunkLogged) {
+        firstTextChunkLogged = true
+        logChatDiagnostic(requestId, "first_text_chunk", {
+          elapsedMs: elapsed(),
+          model: modelId,
+        })
+      }
+    },
+    onFinish: ({ finishReason, totalUsage }) => {
+      logChatDiagnostic(requestId, "generation_finished", {
+        elapsedMs: elapsed(),
+        finishReason,
+        inputTokens: totalUsage.inputTokens ?? null,
+        outputTokens: totalUsage.outputTokens ?? null,
+      })
+    },
+    onAbort: ({ steps }) => {
+      logChatDiagnostic(requestId, "generation_aborted", {
+        elapsedMs: elapsed(),
+        completedSteps: steps.length,
+      })
+    },
   })
 
   logChatDiagnostic(requestId, "ai_stream_created", {
