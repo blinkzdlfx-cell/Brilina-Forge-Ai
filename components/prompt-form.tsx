@@ -374,7 +374,7 @@ export function PromptForm({
       <InputGroup>
         <InputGroupTextarea
           ref={textareaRef}
-          placeholder={isRecording ? "Listening…" : "Send a message…"}
+          placeholder="Send a message…"
           className="max-h-40 min-h-11 overflow-y-hidden p-3.5"
           value={input}
           onChange={(event) => {
@@ -418,11 +418,11 @@ export function PromptForm({
                     <RotateCcwIcon />
                   </InputGroupButton>
                 )}
-                <InputGroupButton type="button" size="icon-sm" variant="ghost" aria-label="Cancel audio" title="Cancel audio" onClick={cancelVoice}>
+                <InputGroupButton type="button" size="icon-sm" variant="ghost" className="shrink-0" aria-label="Cancel audio" title="Cancel audio" onClick={cancelVoice}>
                   <XIcon />
                 </InputGroupButton>
                 {isRecording && (
-                  <InputGroupButton type="button" size="icon-sm" variant="outline" aria-label="Stop and transcribe without sending" title="Stop and transcribe" onClick={() => finalizeRecording("insert")}>
+                  <InputGroupButton type="button" size="icon-sm" variant="outline" className="shrink-0" aria-label="Stop and transcribe without sending" title="Stop and transcribe" onClick={() => finalizeRecording("insert")}>
                     <SquareIcon />
                   </InputGroupButton>
                 )}
