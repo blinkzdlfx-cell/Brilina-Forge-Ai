@@ -27,21 +27,49 @@ export function ChatMessage({
   message,
   isStreaming = false,
   onRetry,
+  collapseExpandedMessagesKey = 0,
 }: {
   message: ChatUIMessage
   isStreaming?: boolean
   onRetry?: () => void
+  collapseExpandedMessagesKey?: number
 }) {
+  const [userMessageExpanded, setUserMessageExpanded] = React.useState(false)
+
+  React.useEffect(() => {
+    setUserMessageExpanded(false)
+  }, [collapseExpandedMessagesKey])
   if (message.role === "user") {
+    const userText = message.parts
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("")
+    const isLongUserMessage = userText.length > 360
+
     return (
       <Message align="end">
         <MessageContent>
           <Bubble align="end" variant="muted">
             <BubbleContent>
-              {message.parts
-                .filter((part) => part.type === "text")
-                .map((part) => part.text)
-                .join("")}
+              <div
+                className={
+                  isLongUserMessage && !userMessageExpanded
+                    ? "max-h-36 overflow-hidden whitespace-pre-wrap"
+                    : "whitespace-pre-wrap"
+                }
+              >
+                {userText}
+              </div>
+              {isLongUserMessage && (
+                <button
+                  type="button"
+                  className="mt-2 text-xs font-medium underline underline-offset-4"
+                  onClick={() => setUserMessageExpanded((expanded) => !expanded)}
+                  aria-expanded={userMessageExpanded}
+                >
+                  {userMessageExpanded ? "Show less" : "Show more"}
+                </button>
+              )}
             </BubbleContent>
           </Bubble>
         </MessageContent>
@@ -100,7 +128,11 @@ export function ChatMessage({
               })}
             </Trace>
           ) : (
-            <TextPart key={index} part={block} />
+            <TextPart
+              key={index}
+              part={block}
+              collapseExpandedMessagesKey={collapseExpandedMessagesKey}
+            />
           )
         )}
         {!isStreaming && <SourcesPart parts={message.parts} />}
