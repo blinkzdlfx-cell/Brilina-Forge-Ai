@@ -61,6 +61,7 @@ export function PromptForm({
   onComposerFocus: () => void
 }) {
   const [input, setInput] = React.useState("")
+  const inputRef = React.useRef("")
   const [voiceState, setVoiceState] = React.useState<VoiceState>("idle")
   const [voiceError, setVoiceError] = React.useState("")
   const [waveformLevel, setWaveformLevel] = React.useState(0)
@@ -88,12 +89,13 @@ export function PromptForm({
 
   function appendTranscript(transcript: string) {
     const textarea = textareaRef.current
-    setInput((current) => {
-      const separator = current.trim()
-        ? current.endsWith(" ") || current.endsWith("\n") ? "" : " "
-        : ""
-      return `${current}${separator}${transcript}`
-    })
+    const current = inputRef.current
+    const separator = current.trim()
+      ? current.endsWith(" ") || current.endsWith("\n") ? "" : " "
+      : ""
+    const next = `${current}${separator}${transcript}`
+    inputRef.current = next
+    setInput(next)
     requestAnimationFrame(() => {
       if (textarea) resizeTextarea(textarea)
       textarea?.focus()
@@ -185,8 +187,10 @@ export function PromptForm({
       audioBlobRef.current = null
       setVoiceState("idle")
       if (intent === "send") {
-        const combined = [input.trim(), transcript].filter(Boolean).join(input.trim() ? " " : "")
+        const currentInput = inputRef.current.trim()
+        const combined = [currentInput, transcript].filter(Boolean).join(currentInput ? " " : "")
         onSubmit(combined)
+        inputRef.current = ""
         setInput("")
         if (textareaRef.current) {
           textareaRef.current.style.height = "auto"
@@ -351,9 +355,10 @@ export function PromptForm({
       retryTranscription()
       return
     }
-    const text = input.trim()
+    const text = inputRef.current.trim()
     if (!text || isBusy || voiceState === "transcribing" || voiceState === "stopped") return
     onSubmit(text)
+    inputRef.current = ""
     setInput("")
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto"
@@ -374,6 +379,7 @@ export function PromptForm({
           className="max-h-40 min-h-11 overflow-y-hidden p-3.5"
           value={input}
           onChange={(event) => {
+            inputRef.current = event.target.value
             setInput(event.target.value)
             resizeTextarea(event.currentTarget)
           }}
