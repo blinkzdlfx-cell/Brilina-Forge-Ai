@@ -17,17 +17,6 @@ function jsonError(message: string, status: number) {
   return Response.json({ error: message }, { status })
 }
 
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = ""
-  const chunkSize = 0x8000
-
-  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize))
-  }
-
-  return btoa(binary)
-}
-
 export async function POST(request: Request) {
   // Keep this cost-bearing endpoint off by default while authentication and
   // rate limiting are still being implemented.
@@ -75,16 +64,16 @@ export async function POST(request: Request) {
 
   let upstream: Response
   try {
-    const audio = bytesToBase64(new Uint8Array(await file.arrayBuffer()))
+    const audio = await file.arrayBuffer()
     upstream = await fetch(
       `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/openai/whisper`,
       {
         method: "POST",
         headers: {
           Authorization: `Bearer ${apiToken}`,
-          "Content-Type": "application/json",
+          "Content-Type": "application/octet-stream",
         },
-        body: JSON.stringify({ audio, task: "transcribe" }),
+        body: audio,
         signal: AbortSignal.timeout(25_000),
       }
     )
