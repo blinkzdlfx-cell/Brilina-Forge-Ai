@@ -7,16 +7,21 @@ import {
   validateUIMessages,
 } from "ai"
 
-import { DEFAULT_MODEL, getLanguageModel, isModelAllowed } from "@/lib/models"
+import { prepareBoundedContext } from "@/lib/context-budget.mjs"
+import { validateImageParts } from "@/lib/image-input.mjs"
+import { readJsonWithinLimit } from "@/lib/bounded-request.mjs"
+import { DEFAULT_MODEL, getLanguageModel, getModelImageLimit, isModelAllowed, isVisionModel } from "@/lib/models"
 import { getTools, type ChatUIMessage } from "@/tools"
 
 export const maxDuration = 30
 
 // Keep the Free Worker request path bounded. Six recent messages preserve useful
 // context without repeatedly validating the entire client-side transcript.
-const MAX_REQUEST_BYTES = 48 * 1024
+const MAX_REQUEST_BYTES = 5 * 1024 * 1024
 const MAX_CONTEXT_MESSAGES = 6
 const MAX_PARTS_PER_MESSAGE = 24
+const MAX_MESSAGE_TEXT_CHARS = 12_000
+const MAX_CONTEXT_TEXT_CHARS = 32_000
 const MAX_OUTPUT_TOKENS = 4096
 const MAX_TOOL_STEPS = 4
 
@@ -28,18 +33,27 @@ function logChatDiagnostic(
   // Never log prompts, message bodies, API keys, or provider response content.
   console.info(
     "[forge-chat-diagnostic]",
-    JSON.stringify({ requestId, stage, at: new Date().toISOString(), ...details })
+    JSON.stringify({ requestId, stage, at: new Date().toISOString(), elapsedTimeKind: "wall_clock", ...details })
   )
 }
 
+function classifyError(error: unknown) {
+  if (!(error instanceof Error)) return "unknown"
+  const message = error.message
+  if (error.name === "AbortError") return "aborted"
+  if (error.name === "TimeoutError" || /timeout|timed out/i.test(message)) return "timeout"
+  if (/\b429\b|rate.?limit|quota/i.test(message)) return "rate_limit"
+  if (/\b401\b|\b403\b|unauthorized|forbidden|authentication/i.test(message)) return "provider_auth"
+  if (/\b5\d\d\b|unavailable|overloaded/i.test(message)) return "provider_unavailable"
+  if (/invalid|malformed|schema|validation/i.test(message)) return "validation"
+  return "provider_or_runtime_error"
+}
+
 function errorDetails(error: unknown) {
-  if (error instanceof Error) {
-    return {
-      errorName: error.name,
-      errorMessage: error.message.slice(0, 200),
-    }
+  return {
+    errorName: error instanceof Error ? error.name : "UnknownError",
+    errorCategory: classifyError(error),
   }
-  return { errorName: "UnknownError" }
 }
 
 function jsonError(requestId: string, message: string, status: number) {
@@ -60,19 +74,25 @@ export async function POST(req: Request) {
   })
 
   if (contentLength > MAX_REQUEST_BYTES) {
-    return jsonError(requestId, "This conversation is too large. Start a new chat or shorten the recent context.", 413)
+    return jsonError(requestId, "This request exceeds the 5 MiB limit. Start a new chat or use smaller images.", 413)
   }
 
-  let body: unknown
-  try {
-    body = await req.json()
-  } catch (error) {
-    logChatDiagnostic(requestId, "body_parse_failed", {
+  const parsedBody = await readJsonWithinLimit(req, MAX_REQUEST_BYTES)
+  if (!parsedBody.ok) {
+    logChatDiagnostic(requestId, "body_rejected", {
       elapsedMs: elapsed(),
-      ...errorDetails(error),
+      reason: parsedBody.reason,
+      bytesRead: parsedBody.bytesRead,
     })
+    if (parsedBody.reason === "too_large") {
+      return jsonError(requestId, "This request exceeds the 5 MiB limit. Shorten the recent conversation or use smaller images.", 413)
+    }
+    if (parsedBody.reason === "read_error") {
+      return jsonError(requestId, "Could not read the request body. Please try again.", 400)
+    }
     return jsonError(requestId, "Invalid JSON body.", 400)
   }
+  const body: unknown = parsedBody.value
 
   const model = (body as { model?: unknown })?.model
   const modelId = typeof model === "string" ? model : DEFAULT_MODEL
@@ -99,18 +119,56 @@ export async function POST(req: Request) {
     return jsonError(requestId, "Send at least one chat message.", 400)
   }
 
-  // Cheap bounds checks before AI SDK schema validation. Do not stringify the
-  // whole history: doing so adds avoidable CPU work on the Free Worker.
-  const recentMessages = rawMessages.slice(-MAX_CONTEXT_MESSAGES)
-  for (const message of recentMessages) {
-    if (
-      !message ||
-      typeof message !== "object" ||
-      !Array.isArray((message as { parts?: unknown }).parts) ||
-      (message as { parts: unknown[] }).parts.length > MAX_PARTS_PER_MESSAGE
-    ) {
-      return jsonError(requestId, "Invalid or oversized message structure.", 400)
+  // Bound history before SDK validation/conversion. Keep the newest messages
+  // in chronological order and reject oversized text rather than silently
+  // dropping context that may contain the user's actual requirements.
+  const context = prepareBoundedContext(rawMessages, {
+    maxMessages: MAX_CONTEXT_MESSAGES,
+    maxPartsPerMessage: MAX_PARTS_PER_MESSAGE,
+    maxTextCharsPerMessage: MAX_MESSAGE_TEXT_CHARS,
+    maxTotalTextChars: MAX_CONTEXT_TEXT_CHARS,
+  })
+  if (!context.ok) {
+    logChatDiagnostic(requestId, "context_rejected", {
+      elapsedMs: elapsed(),
+      reason: context.reason,
+      textChars: context.textChars,
+    })
+    if (context.reason === "message_text_too_large") {
+      return jsonError(requestId, "A recent message is too long. Split it into smaller messages and retry.", 413)
     }
+    if (context.reason === "context_text_too_large") {
+      return jsonError(requestId, "The recent conversation is too large. Start a new chat or shorten earlier messages.", 413)
+    }
+    return jsonError(requestId, "Invalid or oversized message structure.", 400)
+  }
+  const recentMessages = context.messages
+
+  const imageValidation = validateImageParts(recentMessages, {
+    modelSupportsVision: isVisionModel(modelId),
+    maxImages: getModelImageLimit(modelId),
+  })
+  if (!imageValidation.ok) {
+    logChatDiagnostic(requestId, "image_input_rejected", {
+      elapsedMs: elapsed(),
+      reason: imageValidation.reason,
+      imageCount: imageValidation.imageCount,
+      totalImageBytes: imageValidation.totalImageBytes,
+      model: modelId,
+    })
+    if (imageValidation.reason === "model_not_vision") {
+      return jsonError(requestId, "Choose a vision-capable model to send images.", 400)
+    }
+    if (imageValidation.reason === "unsupported_file_type") {
+      return jsonError(requestId, "Use PNG, JPEG, or WebP images only.", 415)
+    }
+    if (imageValidation.reason === "invalid_image_data") {
+      return jsonError(requestId, "An attached image is invalid. Please select it again.", 400)
+    }
+    if (imageValidation.reason === "too_many_images") {
+      return jsonError(requestId, `This model supports up to ${getModelImageLimit(modelId)} images per request.`, 413)
+    }
+    return jsonError(requestId, "Images must be 1 MiB or smaller each and 3 MiB total.", 413)
   }
 
   const tools = getTools()
@@ -149,6 +207,7 @@ export async function POST(req: Request) {
     return jsonError(requestId, "Could not prepare the conversation for the AI provider.", 500)
   }
 
+  let firstTextChunkLogged = false
   const result = streamText({
     model: languageModel,
     system:
@@ -157,7 +216,33 @@ export async function POST(req: Request) {
     tools,
     stopWhen: isStepCount(MAX_TOOL_STEPS),
     maxOutputTokens: MAX_OUTPUT_TOKENS,
+    maxRetries: 1,
+    timeout: { totalMs: 27_000, stepMs: 25_000 },
     abortSignal: req.signal,
+    onChunk: ({ chunk }) => {
+      // Record time-to-first-text without logging the generated content.
+      if (chunk.type === "text-delta" && !firstTextChunkLogged) {
+        firstTextChunkLogged = true
+        logChatDiagnostic(requestId, "first_text_chunk", {
+          elapsedMs: elapsed(),
+          model: modelId,
+        })
+      }
+    },
+    onFinish: ({ finishReason, totalUsage }) => {
+      logChatDiagnostic(requestId, "generation_finished", {
+        elapsedMs: elapsed(),
+        finishReason,
+        inputTokens: totalUsage.inputTokens ?? null,
+        outputTokens: totalUsage.outputTokens ?? null,
+      })
+    },
+    onAbort: ({ steps }) => {
+      logChatDiagnostic(requestId, "generation_aborted", {
+        elapsedMs: elapsed(),
+        completedSteps: steps.length,
+      })
+    },
   })
 
   logChatDiagnostic(requestId, "ai_stream_created", {
