@@ -83,14 +83,14 @@ Configuration flags are a UI/product switch, not a security boundary. Server rou
 
 ## Voice transcription
 
-The microphone feature records audio in the browser and sends it to a same-origin server endpoint. The server calls OpenAI's `whisper-1` transcription API using the server-only `OPENAI_API_KEY`. The transcript is inserted into the composer for user review, not automatically submitted. Enforce upload limits, accepted MIME types, timeouts, safe errors, and never log recordings, transcripts, or credentials.
+The microphone feature records audio in the browser and sends it to a same-origin server endpoint. The server calls Cloudflare Workers AI's `@cf/openai/whisper` model using the existing server-side `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_AI_API_TOKEN` credentials. The transcript is inserted into the composer for user review, not automatically submitted. Enforce upload limits, accepted MIME types, timeouts, safe errors, and never log recordings, transcripts, or credentials.
 
-The endpoint is explicitly disabled unless `VOICE_TRANSCRIPTION_ENABLED=true`. Keep it disabled on the public deployment until authentication and rate limiting are in place; enable it locally for development tests. This avoids adding a new publicly callable, usage-billed endpoint before the application's access controls exist.
+Cloudflare Workers AI has a free daily allocation shared across Workers AI model usage; it is not an unlimited Whisper-only quota. The endpoint is explicitly disabled unless `VOICE_TRANSCRIPTION_ENABLED=true`. Keep it disabled on the public deployment until authentication and rate limiting are in place; enable it locally for development tests. This avoids adding a new publicly callable, usage-billed endpoint before the application's access controls exist.
 
 ## Implementation order
 
 1. Preserve the approved UI and add the reusable foundation document/configuration plan.
-2. Add voice transcription behind a server endpoint and test it locally with an OpenAI key configured as a secret.
+2. Add voice transcription behind a server endpoint using Cloudflare Workers AI Whisper and test it locally.
 3. Implement Better Auth with all three requested sign-in methods and protect APIs.
 4. Add explicit account/session UI and test authentication on desktop and a physical phone.
 5. Extract reusable configuration/provider boundaries and prepare a clean starter repository.
