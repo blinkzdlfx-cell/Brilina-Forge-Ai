@@ -69,7 +69,7 @@ export function ChatHeaderControls({
         type="button"
         variant="ghost"
         size="icon"
-        className="size-9 rounded-full hover:bg-muted dark:hover:bg-white/10"
+        className="size-8 shrink-0 rounded-full hover:bg-muted dark:hover:bg-white/10 sm:size-9"
         onClick={() => setMenuOpen((open) => !open)}
         aria-label="More options"
         title="More options"
