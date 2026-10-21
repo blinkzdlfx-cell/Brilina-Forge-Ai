@@ -33,18 +33,27 @@ function logChatDiagnostic(
   // Never log prompts, message bodies, API keys, or provider response content.
   console.info(
     "[forge-chat-diagnostic]",
-    JSON.stringify({ requestId, stage, at: new Date().toISOString(), ...details })
+    JSON.stringify({ requestId, stage, at: new Date().toISOString(), elapsedTimeKind: "wall_clock", ...details })
   )
 }
 
+function classifyError(error: unknown) {
+  if (!(error instanceof Error)) return "unknown"
+  const message = error.message
+  if (error.name === "AbortError") return "aborted"
+  if (error.name === "TimeoutError" || /timeout|timed out/i.test(message)) return "timeout"
+  if (/\b429\b|rate.?limit|quota/i.test(message)) return "rate_limit"
+  if (/\b401\b|\b403\b|unauthorized|forbidden|authentication/i.test(message)) return "provider_auth"
+  if (/\b5\d\d\b|unavailable|overloaded/i.test(message)) return "provider_unavailable"
+  if (/invalid|malformed|schema|validation/i.test(message)) return "validation"
+  return "provider_or_runtime_error"
+}
+
 function errorDetails(error: unknown) {
-  if (error instanceof Error) {
-    return {
-      errorName: error.name,
-      errorMessage: error.message.slice(0, 200),
-    }
+  return {
+    errorName: error instanceof Error ? error.name : "UnknownError",
+    errorCategory: classifyError(error),
   }
-  return { errorName: "UnknownError" }
 }
 
 function jsonError(requestId: string, message: string, status: number) {

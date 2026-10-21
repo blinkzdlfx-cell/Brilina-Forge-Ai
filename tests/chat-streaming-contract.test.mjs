@@ -25,6 +25,9 @@ test("stream lifecycle diagnostics do not log generated text", () => {
   assert.match(route, /totalUsage\.inputTokens/)
   assert.match(route, /totalUsage\.outputTokens/)
   assert.doesNotMatch(route, /logChatDiagnostic\([^\n]*chunk\.text/)
+  assert.match(route, /elapsedTimeKind: "wall_clock"/)
+  assert.match(route, /errorCategory: classifyError\(error\)/)
+  assert.doesNotMatch(route, /errorMessage: error\.message/)
 })
 
 test("the route retains bounded tool turns and output tokens", () => {
