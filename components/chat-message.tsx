@@ -1,7 +1,5 @@
 "use client"
 
-import * as React from "react"
-
 import {
   type ChatMessagePart,
   type ChatUIMessage,
@@ -130,11 +128,7 @@ export function ChatMessage({
               })}
             </Trace>
           ) : (
-            <TextPart
-              key={index}
-              part={block}
-              collapseExpandedMessagesKey={collapseExpandedMessagesKey}
-            />
+            <TextPart key={index} part={block} />
           )
         )}
         {!isStreaming && <SourcesPart parts={message.parts} />}
