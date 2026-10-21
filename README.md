@@ -4,13 +4,14 @@ A streaming AI assistant built with Next.js, the AI SDK, and shadcn components. 
 
 ## AI, search, and voice input
 
-- **Chat model:** Cloudflare Workers AI `@cf/zai-org/glm-4.7-flash`, accessed through Cloudflare's OpenAI-compatible endpoint.
+- **Chat model:** Cloudflare Workers AI `@cf/zai-org/glm-4.7-flash`, accessed through Cloudflare's OpenAI-compatible endpoint. Responses stream through the AI SDK; request bytes, recent context, model output, and tool steps are bounded.
+- **Image understanding:** Optional vision models are Cloudflare Workers AI `@cf/qwen/qwen3.8-27b` and Groq `qwen/qwen3.8-27b`. Groq's `meta-models/muse-spark-open` is a limited preview and is shown only when explicitly configured. The app accepts PNG/JPEG/WebP images up to 1 MiB each and 3 MiB total. The Cloudflare vision route is limited to one image per request; Groq Qwen is limited to three. These are application limits unless a stricter provider limit applies.
 - **Web search:** Tavily's independent search API. The server requests at most five results, only accepts HTTPS result URLs, truncates excerpts, applies a timeout, and returns safe errors for provider failures.
 - **Voice input:** The browser records audio and sends raw audio bytes to `POST /api/transcribe`. Cloudflare Workers AI's `@cf/openai/whisper-large-v3-turbo` transcribes it through the `AI` binding. Stop transcribes and inserts text without sending; Send transcribes and sends through the existing chat flow; X cancels. Failed audio can be retried during the current page session.
 - **Citations:** The assistant is instructed to cite web-supported claims with Markdown links to the exact URLs returned by Tavily.
 - **Existing UI:** The responsive chat UI, streamed messages, model selector, GitHub repository lookup, and interactive question tool are retained.
 
-Provider credentials are server-side only. Do not prefix them with `NEXT_PUBLIC_` or commit real values.
+Provider credentials are server-side only. Do not prefix them with `NEXT_PUBLIC_` or commit real values. Vision models appear in the selector only when their required server-side credentials are configured.
 
 ## Environment variables
 
@@ -21,6 +22,8 @@ Copy `.env.example` to `.env.local` for local development.
 | `CLOUDFLARE_ACCOUNT_ID` | Yes | Cloudflare account ID used for Workers AI requests |
 | `CLOUDFLARE_AI_API_TOKEN` | Yes | Cloudflare API token with permission to call Workers AI |
 | `TAVILY_API_KEY` | For web search | Tavily API key |
+| `GROQ_API_KEY` | Optional | Enables the Groq Qwen vision model; keep server-side only |
+| `GROQ_VISION_SECONDARY_MODEL` | Optional, preview access only | Set to `meta-models/muse-spark-open` only if the Groq account is approved for this preview model |
 | `VOICE_TRANSCRIPTION_ENABLED` | Explicit opt-in | Set to `true` to enable transcription; keep off on public deployments until authentication and rate limiting are in place |
 | `NEXTJS_ENV` | Local development | OpenNext environment mode |
 

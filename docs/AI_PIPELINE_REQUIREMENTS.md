@@ -44,8 +44,8 @@ Preserve original user intent, relevant conversation history, tool-call/result p
 - **Tavily is already working.** Its request/configuration/runtime path must remain unchanged in Batches 1 and 2. Batch 3 audits and hardens the existing integration; it must not add a duplicate search provider or replace Tavily.
 - Current chat model is Cloudflare Workers AI `@cf/zai-org/glm-4.7-flash` through the OpenAI-compatible endpoint.
 - Current app uses Next.js 16, React 19, AI SDK v7, `streamText`, `toUIMessageStream`, `useChat`, and OpenNext Cloudflare.
-- Current chat route has a 48 KiB declared request-size limit, keeps six recent messages, caps parts at 24/message, caps model output at 4096 tokens and tool steps at four, and already emits redacted stage diagnostics. Verify these constraints against actual body bytes and runtime behavior before treating them as complete.
-- Current image attachment path and Groq vision configuration have not yet been verified. Do not invent provider keys, models, or limits. Image work belongs in Batch 2 after a source/UI/API audit and authoritative model-contract verification.
+- Current chat route uses a bounded streamed body reader with a 5 MiB application request limit, keeps six recent messages, caps parts at 24/message and text context at 32,000 characters, caps model output at 4096 tokens and tool steps at four, and emits redacted stage diagnostics. Image payloads are limited to 1 MiB each and 3 MiB total; model-specific image count is enforced before provider conversion.
+- Image attachments use the AI SDK's file parts and are validated before model conversion. Current vision choices: Cloudflare Workers AI `@cf/qwen/qwen3.8-27b` (one image per request by application policy), Groq `qwen/qwen3.8-27b` (provider supports up to three images), and optional Groq `meta-models/muse-spark-open` only when preview access is explicitly configured. The text-only default remains GLM 4.7 Flash. See official provider contracts before changing these model IDs or limits.
 - No new Worker, dependency, database schema, secret, or production deployment without evidence and authorization.
 
 ## Required test categories
