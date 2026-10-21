@@ -83,12 +83,14 @@ Configuration flags are a UI/product switch, not a security boundary. Server rou
 
 ## Voice transcription
 
-The microphone feature should record audio in the browser and send it to a same-origin server endpoint. The server calls OpenAI's `whisper-1` transcription API using the server-only `OPENAI_API_KEY`. The transcript should be inserted into the composer for user review, not automatically submitted. Enforce upload limits, accepted MIME types, timeouts, safe errors, and never log recordings, transcripts, or credentials.
+The microphone feature records audio in the browser and sends it to a same-origin server endpoint. The server calls OpenAI's `whisper-1` transcription API using the server-only `OPENAI_API_KEY`. The transcript is inserted into the composer for user review, not automatically submitted. Enforce upload limits, accepted MIME types, timeouts, safe errors, and never log recordings, transcripts, or credentials.
+
+The endpoint is explicitly disabled unless `VOICE_TRANSCRIPTION_ENABLED=true`. Keep it disabled on the public deployment until authentication and rate limiting are in place; enable it locally for development tests. This avoids adding a new publicly callable, usage-billed endpoint before the application's access controls exist.
 
 ## Implementation order
 
 1. Preserve the approved UI and add the reusable foundation document/configuration plan.
-2. Add voice transcription behind a server endpoint and test it with an OpenAI key configured as a secret.
+2. Add voice transcription behind a server endpoint and test it locally with an OpenAI key configured as a secret.
 3. Implement Better Auth with all three requested sign-in methods and protect APIs.
 4. Add explicit account/session UI and test authentication on desktop and a physical phone.
 5. Extract reusable configuration/provider boundaries and prepare a clean starter repository.
