@@ -46,19 +46,19 @@ export function ChatHeaderControls({
   return (
     <div
       ref={menuRef}
-      className="relative flex items-center gap-1 rounded-full border border-border/70 bg-background/85 p-1 shadow-lg backdrop-blur-xl dark:bg-zinc-900/80"
+      className="relative flex min-w-0 max-w-[calc(100vw-4.5rem)] items-center gap-0.5 rounded-full border border-border/70 bg-background/85 p-1 shadow-lg backdrop-blur-xl dark:bg-zinc-900/80 sm:max-w-none sm:gap-1"
     >
-      <span className="px-1.5 text-[10px] font-semibold tracking-wide sm:px-3 sm:text-xs">
+      <span className="shrink-0 px-1 text-[9px] font-semibold tracking-wide sm:px-2 sm:text-[10px]">
         BRILINAFORGE
       </span>
-      <div className="max-w-44 sm:max-w-52">
+      <div className="w-[4.75rem] min-w-0 shrink sm:w-36 sm:max-w-44">
         <ModelSelect models={models} value={model} onValueChange={onModelChange} />
       </div>
       <Button
         type="button"
         variant="ghost"
         size="icon"
-        className="size-9 rounded-full hover:bg-muted dark:hover:bg-white/10"
+        className="size-8 shrink-0 rounded-full hover:bg-muted dark:hover:bg-white/10 sm:size-9"
         onClick={onNewChat}
         aria-label="New chat"
         title="New chat"
