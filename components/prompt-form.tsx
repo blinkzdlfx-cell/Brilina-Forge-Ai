@@ -59,13 +59,16 @@ export function PromptForm({
   onStop,
   onComposerFocus,
   canAttachImages,
+  maxImages,
 }: {
   isBusy: boolean
   onSubmit: (text: string, files?: File[]) => void
   onStop: () => void
   canAttachImages: boolean
+  maxImages: number
   onComposerFocus: () => void
 }) {
+  const maxSelectableImages = Math.min(MAX_IMAGE_COUNT, maxImages)
   const [input, setInput] = React.useState("")
   const [selectedImages, setSelectedImages] = React.useState<File[]>([])
   const [imageError, setImageError] = React.useState("")
@@ -360,8 +363,8 @@ export function PromptForm({
     if (!incoming.length) return
 
     const combined = [...selectedImages, ...incoming]
-    if (combined.length > MAX_IMAGE_COUNT) {
-      setImageError("Attach up to 3 images per message.")
+    if (combined.length > maxSelectableImages) {
+      setImageError(`Attach up to ${maxSelectableImages} image(s) per message.`)
       return
     }
     if (combined.some((file) => !ALLOWED_IMAGE_TYPES.has(file.type))) {
@@ -486,7 +489,7 @@ export function PromptForm({
                   size="icon-sm"
                   variant="outline"
                   aria-label="Attach images"
-                  title="Attach images (PNG, JPEG, WebP; up to 3)"
+                  title={`Attach images (PNG, JPEG, WebP; up to ${maxSelectableImages})`}
                   disabled={isBusy}
                   onClick={() => imageInputRef.current?.click()}
                 >

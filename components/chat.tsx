@@ -91,16 +91,23 @@ export function Chat({ models }: { models: GatewayModel[] }) {
     (text: string, files: File[] = []) => {
       let requestModel = resolvedModel
       if (files.length > 0) {
+        const previousImageCount = messages.slice(-5).reduce((count, message) => {
+          if (message.role !== "user") return count
+          return count + message.parts.filter(
+            (part) => part.type === "file" && part.mediaType.startsWith("image/")
+          ).length
+        }, 0)
+        const totalImageCount = previousImageCount + files.length
         const currentModel = models.find((item) => item.id === requestModel)
         if (
           !currentModel?.capabilities?.includes("vision") ||
-          files.length > (currentModel.maxImages ?? 0)
+          totalImageCount > (currentModel.maxImages ?? 0)
         ) {
           requestModel =
             models.find(
               (item) =>
                 item.capabilities?.includes("vision") &&
-                (item.maxImages ?? 0) >= files.length
+                (item.maxImages ?? 0) >= totalImageCount
             )?.id ?? ""
         }
         if (!requestModel) {
@@ -120,7 +127,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
         void sendMessage({ text }, { body: { model: requestModel } })
       }
     },
-    [models, resolvedModel, sendMessage]
+    [messages, models, resolvedModel, sendMessage]
   )
 
   const rawErrorMessage = error?.message ?? ""
@@ -277,6 +284,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
             <PromptForm
               isBusy={isBusy}
               canAttachImages={models.some((item) => item.capabilities?.includes("vision"))}
+              maxImages={Math.max(0, ...models.filter((item) => item.capabilities?.includes("vision")).map((item) => item.maxImages ?? 0))}
               onSubmit={handleSendMessage}
               onStop={() => stop()}
               onComposerFocus={() =>
