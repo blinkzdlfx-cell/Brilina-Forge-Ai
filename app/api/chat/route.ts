@@ -161,7 +161,7 @@ export async function POST(req: Request) {
     abortSignal: req.signal,
     onChunk: ({ chunk }) => {
       // Record time-to-first-text without logging the generated content.
-      if (chunk.type === "text" && !firstTextChunkLogged) {
+      if (chunk.type === "text-delta" && !firstTextChunkLogged) {
         firstTextChunkLogged = true
         logChatDiagnostic(requestId, "first_text_chunk", {
           elapsedMs: elapsed(),
