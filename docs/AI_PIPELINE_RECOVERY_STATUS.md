@@ -25,8 +25,8 @@ The existing architecture is already streaming-first at source level. Batch 1 mu
 The other repository's Batch 1 used custom provider/controller/Worker streaming layers absent here. Its Batch 2 included head/tail tool-result truncation and retry wrappers, but those APIs do not match this application's AI SDK route and tools. Reimplement the requirements at the correct integration points and retain only applicable ideas.
 
 ## Status
-- Recovery docs: in progress.
-- Batch 1: source audit done; regression tests/verification pending.
+- Recovery docs: recovered and adapted in `docs/AI_PIPELINE_REQUIREMENTS.md` and `docs/AI_PIPELINE_BATCH_PLAN.md`.
+- Batch 1: existing native streaming path preserved; added first-text-chunk, normal completion (finish reason and usage), and abort lifecycle diagnostics in `app/api/chat/route.ts`. Regression tests and CI verification are pending.
 - Batch 2: not started.
-- Batch 3 (Tavily): intentionally held until last.
+- Batch 3 (Tavily): intentionally held until last; no Tavily source/config was changed.
 - Production deployment: not performed.
