@@ -1,7 +1,6 @@
 import { Geist, Geist_Mono } from "next/font/google"
 
 import "./globals.css"
-import { SiteHeader } from "@/components/site-header"
 import { ThemeProvider } from "@/components/theme-provider"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
@@ -36,7 +35,6 @@ export default function RootLayout({
               className="flex flex-col"
               style={{ height: "var(--forge-viewport-height, 100dvh)" }}
             >
-              <SiteHeader />
               {children}
             </div>
           </TooltipProvider>
