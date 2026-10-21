@@ -35,23 +35,27 @@ import { Trace, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace"
 export function Chat({ models }: { models: GatewayModel[] }) {
   React.useEffect(() => {
     const viewport = window.visualViewport
-    if (!viewport) return
 
+    // Keep the app constrained to the visible viewport when a mobile keyboard
+    // opens, while still handling browsers without VisualViewport support.
     const updateViewport = () => {
+      const height = viewport?.height ?? window.innerHeight
       document.documentElement.style.setProperty(
         "--forge-viewport-height",
-        `${viewport.height}px`
+        `${height}px`
       )
     }
 
     updateViewport()
-    viewport.addEventListener("resize", updateViewport)
-    viewport.addEventListener("scroll", updateViewport)
+    viewport?.addEventListener("resize", updateViewport)
+    viewport?.addEventListener("scroll", updateViewport)
+    window.addEventListener("resize", updateViewport)
     window.addEventListener("orientationchange", updateViewport)
 
     return () => {
-      viewport.removeEventListener("resize", updateViewport)
-      viewport.removeEventListener("scroll", updateViewport)
+      viewport?.removeEventListener("resize", updateViewport)
+      viewport?.removeEventListener("scroll", updateViewport)
+      window.removeEventListener("resize", updateViewport)
       window.removeEventListener("orientationchange", updateViewport)
       document.documentElement.style.removeProperty("--forge-viewport-height")
     }
@@ -119,14 +123,14 @@ export function Chat({ models }: { models: GatewayModel[] }) {
   }, [isBusy, setMessages, stop])
 
   return (
-    <SidebarProvider defaultOpen className="h-full min-h-0 w-full flex-1 overflow-hidden overscroll-y-contain">
+    <SidebarProvider defaultOpen className="h-full !min-h-0 w-full flex-1 overflow-hidden overscroll-none">
       <ChatSidebar
         hasConversation={messages.length > 0}
         conversationTitle={conversationTitle}
         onNewChat={startNewChat}
       />
 
-      <SidebarInset className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <SidebarInset className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
           <SidebarTrigger
             className="md:hidden"
@@ -135,9 +139,9 @@ export function Chat({ models }: { models: GatewayModel[] }) {
           />
         </div>
 
-        <div className="mx-auto flex min-h-0 w-full flex-1 flex-col">
+        <div className="mx-auto flex min-h-0 w-full flex-1 flex-col overflow-hidden">
           {messages.length === 0 ? (
-            <div className="flex flex-1 items-center justify-center p-6">
+            <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-6">
               <Empty>
                 <EmptyHeader>
                   <EmptyTitle>What can I help with?</EmptyTitle>
@@ -160,7 +164,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
             </div>
           ) : (
             <MessageScrollerProvider>
-              <MessageScroller className="flex-1">
+              <MessageScroller className="min-h-0 flex-1">
                 <MessageScrollerViewport>
                   <MessageScrollerContent className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-6 py-6">
                     {messages.map((message) => (
@@ -223,7 +227,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
             </MessageScrollerProvider>
           )}
 
-          <div className="mx-auto flex w-full max-w-2xl flex-col gap-2 px-6 pb-6">
+          <div className="mx-auto flex w-full max-w-2xl shrink-0 flex-col gap-2 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6">
             {error && (
               <Alert variant="destructive">
                 <AlertTitle>Request failed</AlertTitle>

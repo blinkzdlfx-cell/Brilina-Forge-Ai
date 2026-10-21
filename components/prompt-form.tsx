@@ -52,7 +52,7 @@ export function PromptForm({
   }
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit} className="w-full">
       <InputGroup>
         <InputGroupTextarea
           ref={textareaRef}
@@ -63,19 +63,11 @@ export function PromptForm({
             setInput(event.target.value)
             resizeTextarea(event.currentTarget)
           }}
-          onFocus={(event) => {
+          onFocus={() => {
             onComposerFocus()
-            resizeTextarea(event.currentTarget)
-            // Capture the textarea before the React event handler returns.
-            const textarea = event.currentTarget
-            // Let the mobile keyboard finish opening before bringing the composer
-            // into the visible visual viewport. Avoid scrolling the whole page.
-            window.setTimeout(() => {
-              textarea.scrollIntoView({
-                block: "nearest",
-                behavior: "smooth",
-              })
-            }, 250)
+            // The chat shell follows VisualViewport resize events when the
+            // mobile keyboard opens. Avoid scrollIntoView here: it can scroll
+            // the document behind the keyboard and hide the send controls.
           }}
           onKeyDown={(event) => {
             if (
