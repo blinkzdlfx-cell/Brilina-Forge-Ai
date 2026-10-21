@@ -26,7 +26,7 @@ The other repository's Batch 1 used custom provider/controller/Worker streaming 
 
 ## Status
 - Recovery docs: recovered and adapted in `docs/AI_PIPELINE_REQUIREMENTS.md` and `docs/AI_PIPELINE_BATCH_PLAN.md`.
-- Batch 1: existing native streaming path preserved; added first-text-chunk, normal completion (finish reason and usage), and abort lifecycle diagnostics in `app/api/chat/route.ts`. Regression tests and CI verification are pending.
-- Batch 2: not started.
+- Batch 1: existing native streaming path preserved; added first-text-chunk, normal completion (finish reason and usage), and abort lifecycle diagnostics in `app/api/chat/route.ts`. Added `tests/chat-streaming-contract.test.mjs`. CI run `39687303526` passed unit tests (9 total), lint, typecheck, and Cloudflare Worker build. The first typecheck correctly caught an AI SDK event-type mismatch; it was fixed from `text` to `text-delta` and the final run passed. Live-provider/browser acceptance was not performed.
+- Batch 2: now starting after Batch 1 automated gate passed.
 - Batch 3 (Tavily): intentionally held until last; no Tavily source/config was changed.
 - Production deployment: not performed.
