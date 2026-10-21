@@ -59,43 +59,43 @@ export function ChatMessage({
             <Bubble align="end" variant="muted">
               <BubbleContent>
                 <div
-                className={
-                  isLongUserMessage && !userMessageExpanded
-                    ? "max-h-36 overflow-hidden whitespace-pre-wrap"
-                    : "whitespace-pre-wrap"
-                }
-              >
-                {userText}
+                  className={
+                    isLongUserMessage && !userMessageExpanded
+                      ? "max-h-36 overflow-hidden whitespace-pre-wrap"
+                      : "whitespace-pre-wrap"
+                  }
+                >
+                  {userText}
                 </div>
                 {isLongUserMessage && (
-                <button
-                  type="button"
-                  className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-3 py-1 text-xs font-medium no-underline transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  onClick={() => {
-                    const nextExpanded = !userMessageExpanded
-                    setUserMessageExpansion({
-                      key: collapseExpandedMessagesKey,
-                      expanded: nextExpanded,
-                    })
-                    if (nextExpanded) {
-                      requestAnimationFrame(() =>
+                  <button
+                    type="button"
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-3 py-1 text-xs font-medium no-underline transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    onClick={() => {
+                      const nextExpanded = !userMessageExpanded
+                      setUserMessageExpansion({
+                        key: collapseExpandedMessagesKey,
+                        expanded: nextExpanded,
+                      })
+                      if (nextExpanded) {
                         requestAnimationFrame(() =>
-                          userMessageRef.current?.scrollIntoView({
-                            behavior: "smooth",
-                            block: "end",
-                          })
+                          requestAnimationFrame(() =>
+                            userMessageRef.current?.scrollIntoView({
+                              behavior: "smooth",
+                              block: "end",
+                            })
+                          )
                         )
-                      )
-                    }
-                  }}
-                  aria-expanded={userMessageExpanded}
-                >
-                  {userMessageExpanded ? "Show less" : "Show more"}
-                  <ChevronDown
-                    aria-hidden="true"
-                    className={`size-3.5 transition-transform duration-200 ${userMessageExpanded ? "rotate-180" : ""}`}
-                  />
-                </button>
+                      }
+                    }}
+                    aria-expanded={userMessageExpanded}
+                  >
+                    {userMessageExpanded ? "Show less" : "Show more"}
+                    <ChevronDown
+                      aria-hidden="true"
+                      className={`size-3.5 transition-transform duration-200 ${userMessageExpanded ? "rotate-180" : ""}`}
+                    />
+                  </button>
                 )}
               </BubbleContent>
             </Bubble>
