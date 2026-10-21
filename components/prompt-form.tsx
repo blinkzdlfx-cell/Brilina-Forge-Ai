@@ -279,7 +279,7 @@ export function PromptForm({
       const startedAt = Date.now()
       recordingTimerRef.current = setInterval(() => {
         const elapsed = Date.now() - startedAt
-          if (elapsed >= MAX_RECORDING_MS) finalizeRecording(intentRef.current)
+        if (elapsed >= MAX_RECORDING_MS) finalizeRecording(intentRef.current)
       }, 250)
     } catch (error) {
       stopMicrophone()
