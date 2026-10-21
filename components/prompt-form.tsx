@@ -329,7 +329,10 @@ export function PromptForm({
         recorder.onstop = null
         recorder.stop()
       }
-      stopVisualizers()
+      if (animationFrameRef.current !== null) cancelAnimationFrame(animationFrameRef.current)
+      animationFrameRef.current = null
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current)
+      recordingTimerRef.current = null
       streamRef.current?.getTracks().forEach((track) => track.stop())
       streamRef.current = null
       void audioContextRef.current?.close().catch(() => undefined)
