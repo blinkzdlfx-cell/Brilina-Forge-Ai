@@ -3,13 +3,23 @@
 import * as React from "react"
 import { EllipsisVertical, SquarePen } from "lucide-react"
 
+import { type GatewayModel } from "@/lib/models"
+import { ModelSelect } from "@/components/model-select"
 import { Button } from "@/components/ui/button"
 
 type ChatHeaderControlsProps = {
   onNewChat: () => void
+  models: GatewayModel[]
+  model: string
+  onModelChange: (model: string) => void
 }
 
-export function ChatHeaderControls({ onNewChat }: ChatHeaderControlsProps) {
+export function ChatHeaderControls({
+  onNewChat,
+  models,
+  model,
+  onModelChange,
+}: ChatHeaderControlsProps) {
   const [menuOpen, setMenuOpen] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement>(null)
 
@@ -17,10 +27,7 @@ export function ChatHeaderControls({ onNewChat }: ChatHeaderControlsProps) {
     if (!menuOpen) return
 
     const handlePointerDown = (event: PointerEvent) => {
-      if (
-        event.target instanceof Node &&
-        !menuRef.current?.contains(event.target)
-      ) {
+      if (event.target instanceof Node && !menuRef.current?.contains(event.target)) {
         setMenuOpen(false)
       }
     }
@@ -41,6 +48,12 @@ export function ChatHeaderControls({ onNewChat }: ChatHeaderControlsProps) {
       ref={menuRef}
       className="relative flex items-center gap-1 rounded-full border border-border/70 bg-background/85 p-1 shadow-lg backdrop-blur-xl dark:bg-zinc-900/80"
     >
+      <span className="px-1.5 text-[10px] font-semibold tracking-wide sm:px-3 sm:text-xs">
+        BRILINAFORGE
+      </span>
+      <div className="max-w-44 sm:max-w-52">
+        <ModelSelect models={models} value={model} onValueChange={onModelChange} />
+      </div>
       <Button
         type="button"
         variant="ghost"

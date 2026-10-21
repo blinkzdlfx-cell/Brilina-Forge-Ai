@@ -138,7 +138,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
             title="Toggle sidebar"
           />
           <div className="pointer-events-auto">
-            <ChatHeaderControls onNewChat={startNewChat} />
+            <ChatHeaderControls models={models} model={resolvedModel} onModelChange={setModel} onNewChat={startNewChat} />
           </div>
         </div>
 
@@ -238,9 +238,6 @@ export function Chat({ models }: { models: GatewayModel[] }) {
               </Alert>
             )}
             <PromptForm
-              models={models}
-              model={resolvedModel}
-              onModelChange={setModel}
               isBusy={isBusy}
               onSubmit={(text) =>
                 sendMessage({ text }, { body: { model: resolvedModel } })

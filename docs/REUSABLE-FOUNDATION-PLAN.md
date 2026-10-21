@@ -81,11 +81,32 @@ Create a typed central configuration for:
 
 Configuration flags are a UI/product switch, not a security boundary. Server routes must independently enforce authorization and check required secrets.
 
-## Voice transcription
+## Voice recording and transcription
 
-The microphone feature records audio in the browser and sends it to a same-origin server endpoint. The server calls Cloudflare Workers AI's `@cf/openai/whisper` model using the existing server-side `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_AI_API_TOKEN` credentials. The transcript is inserted into the composer for user review, not automatically submitted. Enforce upload limits, accepted MIME types, timeouts, safe errors, and never log recordings, transcripts, or credentials.
+The chat composer uses a single voice state machine: idle, recording, stopped, transcribing, and failed. The browser prefers WebM, then MP4, then the browser's default recording format. While recording, a Web Audio analyser drives the waveform ring. The recording stops automatically after three minutes. Microphone tracks and audio resources are released when recording ends or is cancelled.
 
-Cloudflare Workers AI has a free daily allocation shared across Workers AI model usage; it is not an unlimited Whisper-only quota. The endpoint is explicitly disabled unless `VOICE_TRANSCRIPTION_ENABLED=true`. Keep it disabled on the public deployment until authentication and rate limiting are in place; enable it locally for development tests. This avoids adding a new publicly callable, usage-billed endpoint before the application's access controls exist.
+- **Stop:** transcribe the clip and insert the resulting text into the composer without sending it.
+- **Send while recording:** stop the clip, transcribe it, and submit the transcript through the existing chat send flow.
+- **X:** cancel recording or an in-progress transcription and discard the current clip.
+- **Failure:** keep the audio available in the current page session so the user can retry without recording again. Transcription has a 45-second timeout and retry is manual.
+- **Server endpoint:** accepts raw audio bytes and calls the Cloudflare Workers AI binding with `@cf/openai/whisper-large-v3-turbo`. It validates MIME type and size, returns safe errors, and does not log audio or transcript content.
+
+Cloudflare Workers AI usage is subject to its current allocation and pricing. The public endpoint is still not protected by authentication or rate limiting; this remains a production security risk that must be resolved before treating transcription as a public, unrestricted capability.
+
+## Future feature: server-side failed-transcription audio
+
+Do not use IndexedDB for durable failed-audio storage. When the Settings page and account/session model are implemented, use server-side object storage—prefer Cloudflare R2 for this Cloudflare-hosted app—to retain audio attempts and make failed attempts recoverable across devices.
+
+Proposed behavior and retention:
+- Store audio server-side when transcription fails, with a random opaque ID, MIME type, creation time, status, and expiry metadata. Do not expose public object URLs.
+- A future Settings section named **Failed transcription audio** lists retryable audio clips. Each clip has a three-dot menu with **Re-transcribe** and **Delete**.
+- Failed clips expire after 7 days by default (configurable to 14 days if needed). Cleanup must be automated and must not depend on someone opening Settings.
+- When a clip from the **Failed transcription audio** list is re-transcribed successfully, return the transcript to the composer/chat flow and delete that failed audio object immediately.
+- Audio from a normal successful transcription may remain in server storage for up to 30 days, then must be deleted automatically. Store its expiry timestamp explicitly and enforce the 30-day hard limit.
+- Use authenticated server routes and per-user ownership checks for listing, playback, retry, and deletion. Store metadata in a database (prefer the app's planned Neon PostgreSQL layer) rather than relying on object names as the index.
+- Add scheduled cleanup, size/count limits, retention tests, and explicit user-facing retention disclosure before enabling persistent storage.
+
+This is a planned capability, not implemented by the current voice UI batch. The current batch only keeps a failed clip in page memory for manual retry; it does not persist audio on the server.
 
 ## Implementation order
 

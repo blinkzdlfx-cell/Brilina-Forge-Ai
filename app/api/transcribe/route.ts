@@ -1,7 +1,8 @@
+import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { getRuntimeEnv } from "@/lib/runtime-env"
 
 const MAX_AUDIO_BYTES = 20 * 1024 * 1024
-const MAX_REQUEST_BYTES = MAX_AUDIO_BYTES + 1024 * 1024
+const MAX_REQUEST_BYTES = MAX_AUDIO_BYTES + 1024
 const ALLOWED_AUDIO_TYPES = new Set([
   "audio/flac",
   "audio/mp4",
@@ -13,13 +14,32 @@ const ALLOWED_AUDIO_TYPES = new Set([
   "audio/webm",
 ])
 
+type WorkersAI = {
+  run: (
+    model: string,
+    input: {
+      audio: string
+      task: "transcribe"
+      vad_filter: boolean
+      condition_on_previous_text: boolean
+    }
+  ) => Promise<{ text?: unknown }>
+}
+
 function jsonError(message: string, status: number) {
   return Response.json({ error: message }, { status })
 }
 
+function toBase64(bytes: Uint8Array) {
+  let binary = ""
+  const chunkSize = 0x8000
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize))
+  }
+  return btoa(binary)
+}
+
 export async function POST(request: Request) {
-  // Keep this cost-bearing endpoint off by default while authentication and
-  // rate limiting are still being implemented.
   if (getRuntimeEnv("VOICE_TRANSCRIPTION_ENABLED") !== "true") {
     return jsonError("Voice transcription is temporarily disabled.", 503)
   }
@@ -29,84 +49,56 @@ export async function POST(request: Request) {
     return jsonError("Audio must be 20 MB or smaller. Record a shorter message.", 413)
   }
 
-  const accountId = getRuntimeEnv("CLOUDFLARE_ACCOUNT_ID")
-  const apiToken = getRuntimeEnv("CLOUDFLARE_AI_API_TOKEN")
-  if (!accountId || !apiToken) {
-    return jsonError(
-      "Voice transcription is not configured. Check the Cloudflare Workers AI credentials.",
-      503
-    )
-  }
-
-  let formData: FormData
-  try {
-    formData = await request.formData()
-  } catch {
-    return jsonError("Invalid audio upload.", 400)
-  }
-
-  const file = formData.get("file")
-  if (!(file instanceof File)) {
-    return jsonError("Choose a voice recording to transcribe.", 400)
-  }
-
-  if (file.size === 0) {
-    return jsonError("The audio recording is empty.", 400)
-  }
-  if (file.size > MAX_AUDIO_BYTES) {
-    return jsonError("Audio must be 20 MB or smaller. Record a shorter message.", 413)
-  }
-
-  const contentType = file.type.split(";")[0].trim().toLowerCase()
+  const contentType = (request.headers.get("content-type") ?? "")
+    .split(";")[0]
+    .trim()
+    .toLowerCase()
   if (!ALLOWED_AUDIO_TYPES.has(contentType)) {
     return jsonError("This audio format is not supported. Try recording with a current browser.", 415)
   }
 
-  let upstream: Response
+  let audio: ArrayBuffer
   try {
-    const audio = await file.arrayBuffer()
-    upstream = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/openai/whisper`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiToken}`,
-          "Content-Type": "application/octet-stream",
-        },
-        body: audio,
-        signal: AbortSignal.timeout(25_000),
-      }
-    )
+    audio = await request.arrayBuffer()
   } catch {
-    return jsonError("The transcription service could not be reached. Try again.", 502)
+    return jsonError("Invalid audio upload.", 400)
   }
 
-  if (!upstream.ok) {
-    if (upstream.status === 401 || upstream.status === 403) {
-      return jsonError(
-        "Cloudflare rejected the Workers AI credentials. Check the API token permissions.",
-        503
-      )
+  if (!audio.byteLength) return jsonError("The audio recording is empty.", 400)
+  if (audio.byteLength > MAX_AUDIO_BYTES) {
+    return jsonError("Audio must be 20 MB or smaller. Record a shorter message.", 413)
+  }
+
+  let ai: WorkersAI | undefined
+  try {
+    const env = getCloudflareContext().env as unknown as { AI?: WorkersAI }
+    ai = env.AI
+  } catch {
+    // Next.js local dev has no Workers AI binding unless running under Wrangler.
+  }
+
+  if (!ai) {
+    return jsonError("Workers AI is not available in this runtime. Check the Cloudflare AI binding.", 503)
+  }
+
+  try {
+    const result = await ai.run("@cf/openai/whisper-large-v3-turbo", {
+      audio: toBase64(new Uint8Array(audio)),
+      task: "transcribe",
+      vad_filter: true,
+      condition_on_previous_text: false,
+    })
+
+    if (typeof result.text !== "string") {
+      return jsonError("The transcription service returned no transcript.", 502)
     }
-    if (upstream.status === 429) {
+
+    return Response.json({ text: result.text.trim() })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : ""
+    if (/429|quota|rate.?limit/i.test(message)) {
       return jsonError("The transcription service is busy or its quota is exhausted. Try again later.", 429)
     }
     return jsonError("Transcription failed. Try a shorter recording and try again.", 502)
   }
-
-  let response: { success?: unknown; result?: { text?: unknown } }
-  try {
-    response = (await upstream.json()) as {
-      success?: unknown
-      result?: { text?: unknown }
-    }
-  } catch {
-    return jsonError("The transcription service returned an invalid response.", 502)
-  }
-
-  if (response.success === false || typeof response.result?.text !== "string") {
-    return jsonError("The transcription service returned no transcript.", 502)
-  }
-
-  return Response.json({ text: response.result.text })
 }
