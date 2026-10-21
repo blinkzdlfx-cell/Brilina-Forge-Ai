@@ -1,8 +1,7 @@
 import { getRuntimeEnv } from "@/lib/runtime-env"
 
-export const runtime = "edge"
-
 const MAX_AUDIO_BYTES = 20 * 1024 * 1024
+const MAX_REQUEST_BYTES = MAX_AUDIO_BYTES + 1024 * 1024
 const ALLOWED_AUDIO_TYPES = new Set([
   "audio/flac",
   "audio/mp4",
@@ -19,6 +18,17 @@ function jsonError(message: string, status: number) {
 }
 
 export async function POST(request: Request) {
+  // Explicit opt-in keeps this cost-bearing endpoint off by default while the
+  // app's authentication and rate limiting are still being implemented.
+  if (getRuntimeEnv("VOICE_TRANSCRIPTION_ENABLED") !== "true") {
+    return jsonError("Voice transcription is temporarily disabled.", 503)
+  }
+
+  const contentLength = Number(request.headers.get("content-length") ?? 0)
+  if (contentLength > MAX_REQUEST_BYTES) {
+    return jsonError("Audio must be 20 MB or smaller. Record a shorter message.", 413)
+  }
+
   const apiKey = getRuntimeEnv("OPENAI_API_KEY")
   if (!apiKey) {
     return jsonError("Voice transcription is not configured yet. Add the OPENAI_API_KEY secret.", 503)
