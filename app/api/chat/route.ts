@@ -12,6 +12,7 @@ import { validateImageParts } from "@/lib/image-input.mjs"
 import { readJsonWithinLimit } from "@/lib/bounded-request.mjs"
 import { DEFAULT_MODEL, getLanguageModel, getModelImageLimit, isModelAllowed, isVisionModel } from "@/lib/models"
 import { getTools, type ChatUIMessage } from "@/tools"
+import { requireUser } from "@/lib/auth/require-user"
 
 export const maxDuration = 30
 
@@ -64,6 +65,9 @@ function jsonError(requestId: string, message: string, status: number) {
 }
 
 export async function POST(req: Request) {
+  const auth = await requireUser()
+  if (!auth.ok) return auth.response
+
   const requestId = crypto.randomUUID()
   const startedAt = Date.now()
   const elapsed = () => Date.now() - startedAt
