@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { Ellipsis, SquarePen } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { Ellipsis, LogOut, SquarePen } from "lucide-react"
 
 import { type GatewayModel } from "@/lib/models"
 import { ModelSelect } from "@/components/model-select"
@@ -20,6 +21,7 @@ export function ChatHeaderControls({
   model,
   onModelChange,
 }: ChatHeaderControlsProps) {
+  const router = useRouter()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement>(null)
 
@@ -82,8 +84,23 @@ export function ChatHeaderControls({
         <div
           role="menu"
           aria-label="More options"
-          className="absolute right-0 top-full mt-2 min-h-8 min-w-32 rounded-2xl border border-border/70 bg-popover/95 p-2 shadow-xl backdrop-blur-xl"
-        />
+          className="absolute right-0 top-full z-50 mt-2 min-w-40 rounded-2xl border border-border/70 bg-popover/95 p-2 shadow-xl backdrop-blur-xl"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-muted"
+            onClick={async () => {
+              setMenuOpen(false)
+              await fetch("/api/auth/sign-out", { method: "POST" }).catch(() => undefined)
+              router.replace("/login")
+              router.refresh()
+            }}
+          >
+            <LogOut className="size-4" />
+            Sign out
+          </button>
+        </div>
       )}
     </div>
   )
