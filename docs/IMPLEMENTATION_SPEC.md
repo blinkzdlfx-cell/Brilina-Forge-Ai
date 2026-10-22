@@ -50,8 +50,8 @@ Current constraints and cautions:
 
 1. Chats exist only in client memory and disappear on refresh.
 2. There is no database, auth, or storage integration yet.
-3. Chat and transcription endpoints are currently unauthenticated. Stage 3 must protect all application APIs before this is treated as a public deployment.
-4. `wrangler.jsonc` currently sets `VOICE_TRANSCRIPTION_ENABLED` to true, while the README warns that transcription should remain disabled on a public deployment until authentication and rate limiting exist. Stage 3 must resolve this mismatch; do not leave transcription publicly callable.
+3. Chat and transcription endpoints are currently unauthenticated. Stage 3 must protect chat and all private application APIs. Voice transcription is an explicit exception: it remains unauthenticated for the owner's personal use, but must retain strict input limits, a feature flag, safe errors, and practical abuse controls because the endpoint is publicly callable.
+4. `wrangler.jsonc` currently sets `VOICE_TRANSCRIPTION_ENABLED` to true, while the README warns that transcription should remain disabled on a public deployment until authentication and rate limiting exist. The agreed product decision is to keep transcription unauthenticated for personal use. Stage 3 must reconcile the README and deployment configuration with that decision, preserve the feature flag, and enforce bounded audio size/duration, request timeouts, safe errors, and practical rate limiting or equivalent abuse controls where feasible. Document that an unauthenticated endpoint can be abused and consume the shared Workers AI quota.
 5. The chat composer currently sends selected images as file parts in the chat request. Stage 5–7 replace that flow with upload-first file references.
 6. Tavily already limits results to five, truncates each excerpt to 1,200 characters, limits the response body to 128 KiB, removes duplicate normalized HTTPS URLs, retries one bounded transient failure, and reports partial results. Preserve these protections.
 7. There is no standalone search API route at present. The web-search tool executes as part of the protected chat request. If a separate search route is added later, it must use the same authentication and access checks.
@@ -101,7 +101,7 @@ The sign-in flow must reject disabled accounts before granting an application se
 Every protected application API route must require a server-verified session and a fresh, non-disabled `user_access` row. This includes:
 
 - `/api/chat`
-- `/api/transcribe`
+- `/api/transcribe` is intentionally unauthenticated as a documented exception for personal voice input. It must not expose private data and must enforce strict audio limits, timeout/cancellation, safe errors, and available abuse controls.
 - conversation and message APIs
 - file upload, metadata, download/signing, and delete APIs
 - any dedicated search API added later
@@ -109,11 +109,11 @@ Every protected application API route must require a server-verified session and
 
 The Tavily tool is internal to `/api/chat` today and inherits chat authorization.
 
-Intentional authentication exceptions are limited to the minimum endpoints needed to sign in, sign out, request password reset, complete a password reset, and complete required MFA enrollment/challenge. These endpoints must not expose private application data. Password-reset requests must not reveal whether an email exists. A disabled account must not gain access to application APIs through an authentication exception.
+Intentional authentication exceptions include the minimum endpoints needed to sign in, sign out, request password reset, complete a password reset, and complete required MFA enrollment/challenge, plus `/api/transcribe` as the explicitly approved unauthenticated voice endpoint. These endpoints must not expose private application data. Transcription must be treated as publicly callable and quota-sensitive. Password-reset requests must not reveal whether an email exists. A disabled account must not gain access to application APIs through an authentication exception.
 
 The health endpoint may remain public only if it continues to expose sanitized status/configuration booleans and no secrets, user information, or detailed provider diagnostics.
 
-If `must_change_password` is true, the user may access only the password-change flow, sign-out, and the minimum authentication/MFA operations required to complete account setup. Chat, conversations, search, transcription, files, and other normal application APIs remain blocked until the password has been changed successfully.
+If `must_change_password` is true, the user may access only the password-change flow, sign-out, and the minimum authentication/MFA operations required to complete account setup. Chat, conversations, search, files, and other normal application APIs remain blocked until the password has been changed successfully. The separately approved unauthenticated `/api/transcribe` exception remains technically callable; do not let it access a user's private data.
 
 ### 4.4 Owner admin and MFA
 
@@ -329,7 +329,7 @@ Before coding, verify compatibility with the repository's Next.js 16, React 19, 
 **Verification:**
 
 - [ ] Public sign-up is disabled in Supabase and unreachable through the app.
-- [ ] Unauthenticated requests to every protected API route are rejected.
+- [ ] Unauthenticated requests to every protected API route are rejected, with `/api/transcribe` explicitly tested as the sole application-feature exception.
 - [ ] Only the owner can open `/admin`, and only after a verified authenticator code.
 - [ ] Admin API routes reject a session without `aal2`.
 - [ ] First-time TOTP enrollment displays a QR code and requires successful verification.
@@ -567,7 +567,7 @@ Run the full suite after the earlier stages have individually passed.
 - [ ] Brevo password-reset email delivery and recovery flow work.
 - [ ] Revocation blocks requests immediately, including from a session token that has not expired.
 - [ ] A revoked user cannot access the app; a restored user can.
-- [ ] Unauthenticated requests to all protected APIs are rejected.
+- [ ] Unauthenticated requests to all protected APIs are rejected; `/api/transcribe` is the explicit unauthenticated exception.
 - [ ] Conversations and messages persist across refresh.
 - [ ] Retry does not create duplicate user or assistant messages.
 - [ ] Assistant status semantics for complete, interrupted, and failed are verified.
@@ -575,7 +575,7 @@ Run the full suite after the earlier stages have individually passed.
 - [ ] Image uploads use private Supabase Storage and file references.
 - [ ] Vision requests use the external provider and enforce file ownership.
 - [ ] PDF works before TXT and DOCX are enabled.
-- [ ] Voice transcription remains protected and works for authenticated users.
+- [ ] Voice transcription remains callable without sign-in for personal use, with strict input bounds, safe errors, feature-flag control, and documented shared-quota/abuse risk.
 - [ ] RLS isolates two users across conversations, messages, files, and access state.
 - [ ] Quota exhaustion, timeouts, unsupported files, and storage limits have clear errors.
 - [ ] No service-role key, SMTP credential, provider secret, reset token, TOTP secret, or plaintext password appears in client bundles, logs, or responses.
@@ -614,3 +614,34 @@ Never add Brevo SMTP credentials to this list of application variables: they bel
 Before coding each stage, provide a short design summary, exact files to change, assumptions, security implications, and stage-specific tests. Then implement only that stage, run its tests plus lint/typecheck/Worker build, inspect the diff for unrelated changes, and update the documentation with actual results. A failed test means the stage remains incomplete. Do not start the next stage until the previous stage has passed and been accepted.
 
 This specification is planning only. Wait for explicit approval before implementing any application code or infrastructure changes.
+
+
+## 17. Brilina Dev public landing page, Forge entry point, and custom domain
+
+The public site is a Brilina Dev platform landing page, not a default sign-in screen. Brilina Forge AI is one product within the wider Brilina Dev platform; the landing page should introduce the platform and provide clear navigation to Forge and future products, services, documentation, and contact destinations as those destinations become real. Do not show dead buttons or claim unavailable products are live. Public visitors may view the landing page without an account. Access to the private Forge workspace remains invite-only and requires sign-in; public sign-up stays disabled.
+
+### Domain architecture
+
+- Use the purchased Brilina Dev domain as the public landing-page domain, once the exact domain is confirmed.
+- Use a dedicated `forge.<root-domain>` subdomain for Brilina Forge AI. This keeps the platform homepage and Forge workspace distinct while allowing Forge to retain its current root-relative Next.js routes on its own hostname, minimizing route churn.
+- Configure both hostnames through Cloudflare and map them to the appropriate deployment/Worker. Confirm the domain's current registrar/DNS nameservers and Cloudflare zone ownership before changing DNS. Do not guess the domain or change nameservers/DNS without confirming the exact hostname and current setup.
+- Enable HTTPS and verify the apex/root and Forge subdomain independently. Set the production base URL and auth callback/reset redirect allowlists to the Forge hostname; do not use broad wildcard redirect URLs.
+- The current domain is not yet recorded in this specification. Before DNS changes, record the exact purchased root domain, registrar, whether its DNS zone is already active in Cloudflare, and the intended production hostname. Never commit API tokens or credentials to the repository.
+
+### Public/private route boundary
+
+- Public: Brilina Dev landing page and its navigation; narrowly scoped sign-in, password-reset, and MFA setup/challenge endpoints; sanitized health endpoint; intentionally unauthenticated `/api/transcribe`.
+- Invite-only: Forge chat, conversation/message APIs, search via chat, file metadata/storage operations, and all other private workspace APIs.
+- Owner-only: `/admin` and admin APIs, requiring the owner marker and server-verified AAL2.
+- The landing page must not reveal private conversations, account lists, provider secrets, internal diagnostics, or admin functionality.
+- A public landing page does not mean the Forge workspace or its data is public. Do not redirect every visitor directly to sign-in; present the platform landing page first and offer a clear Forge entry point.
+
+### Verification
+
+- [ ] Root domain opens the Brilina Dev landing page without requiring sign-in.
+- [ ] Landing-page navigation clearly distinguishes Brilina Forge AI from the wider platform and contains no dead links/buttons.
+- [ ] The Forge subdomain opens the Forge experience and routes sign-in to the invite-only flow.
+- [ ] Private Forge APIs reject unauthenticated and disabled users.
+- [ ] `/api/transcribe` works without sign-in only when its feature flag is enabled and rejects oversized/unsupported audio safely.
+- [ ] Root and Forge hostnames have valid HTTPS and correct Cloudflare routing.
+- [ ] Auth callback, password-reset redirect, and allowed redirect URLs use the exact Forge production hostname.
