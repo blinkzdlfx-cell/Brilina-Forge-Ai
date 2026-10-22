@@ -545,7 +545,7 @@ A swap would implement the existing runner interface with an Inngest adapter, ma
 
 Complete Stage 6's implementation and add its tests before moving to Stage 7. Run the consolidated test suite after Batch 4.
 
-## 11. Stage 7 — Attachment drawer
+## 12. Stage 7 — Attachment drawer
 
 **Scope:** replace direct image-in-chat uploads with upload-first file references while preserving the current composer and voice controls.
 
@@ -576,7 +576,7 @@ Complete Stage 6's implementation and add its tests before moving to Stage 7. Ru
 
 Complete Stage 7's implementation and add its tests before moving to Stage 8. Run the consolidated test suite after Batch 4.
 
-## 12. Stage 8 — External vision
+## 13. Stage 8 — External vision
 
 **Scope:** route image questions to an external hosted vision provider while normal text generation remains on Cloudflare Workers AI.
 
@@ -607,7 +607,7 @@ Complete Stage 7's implementation and add its tests before moving to Stage 8. Ru
 
 Complete Stage 8's implementation and add its tests before moving to Stage 9. Run the consolidated test suite after Batch 4.
 
-## 13. Stage 9 — PDF, TXT, and DOCX
+## 14. Stage 9 — PDF, TXT, and DOCX
 
 **Scope:** add document processing, in this order: PDF first, then TXT, then DOCX.
 
@@ -640,7 +640,7 @@ Complete Stage 8's implementation and add its tests before moving to Stage 9. Ru
 
 Complete Stage 9's implementation and add its tests before moving to Stage 10. Run the consolidated test suite after Batch 4.
 
-## 14. Stage 10 — Supabase keep-alive job
+## 15. Stage 10 — Supabase keep-alive job
 
 **Scope:** configure a Cloudflare Cron Trigger to make a lightweight request to Supabase at the lowest frequency that satisfies the applicable plan activity requirement.
 
@@ -773,8 +773,8 @@ The work now contains **eleven numbered stages**, including the Agent Workflow S
 | Batch | Included stages | Main outcome |
 |---|---|---|
 | Batch 1 | Stage 1–3 | Tavily aggregate cap; Supabase schema/RLS foundation; authenticated owner-managed access, MFA, password lifecycle, and protected transcription |
-| Batch 2 | Stage 4, then Stages 6–7 | Conversation/message persistence; private Supabase Storage; working attachment drawer and upload flow |
-| Batch 3 | Stage 8–9 | External vision provider; PDF then TXT/DOCX processing; Supabase keep-alive cron |
-| Batch 4 | Stage 11 plus any stage-specific acceptance fixes | Full end-to-end test run, security/quota checks, build/typecheck/lint, and resolution of discovered regressions |
+| Batch 2 | Stage 4 and Stages 6–7 | Conversation/message persistence; private Supabase Storage; working attachment drawer and upload flow |
+| Batch 3 | Stages 8–10 | External vision provider; PDF then TXT/DOCX processing; Supabase keep-alive cron |
+| Batch 4 | Stage 5 and Stage 11, plus acceptance fixes | Agent Workflow System, full end-to-end test run, security/quota checks, build/typecheck/lint, and resolution of discovered regressions |
 
-Stage 11 remains the tenth and final stage. Batch 4 is the final verification/fix batch, not a new implementation stage. Domain and public landing-page work must be planned explicitly alongside deployment/setup decisions after the exact domain is confirmed; do not silently expand the ten-stage backend scope. GitHub integration stays out of scope until all ten stages pass and the user approves moving to that work.
+Stage 11 is the eleventh and final stage. Batch 4 includes the Agent Workflow System (Stage 5, intentionally delivered in Batch 4 per the user's instruction) and final verification. Domain and public landing-page work must be planned explicitly alongside deployment/setup decisions after the exact domain is confirmed. GitHub integration stays out of scope until all eleven stages pass and the user approves moving to that work.
