@@ -21,18 +21,18 @@ export function AdminMfaPanel() {
 
   React.useEffect(() => {
     let active = true
-    try {
-      const client = createClient()
-      supabaseRef.current = client
-      void client.auth.mfa.listFactors().then(({ data, error: factorError }) => {
+    async function initialize() {
+      try {
+        const client = createClient()
+        supabaseRef.current = client
+        const { data, error: factorError } = await client.auth.mfa.listFactors()
         if (!active) return
+        setClientReady(true)
         if (factorError) {
-          setClientReady(true)
           setError("Could not check authenticator setup. Refresh and try again.")
           setMode("enroll")
           return
         }
-        setClientReady(true)
         const verified = data.totp.find((factor) => factor.status === "verified")
         if (verified) {
           setFactorId(verified.id)
@@ -40,11 +40,13 @@ export function AdminMfaPanel() {
         } else {
           setMode("enroll")
         }
-      })
-    } catch {
-      setError("Supabase is not configured. Set the public URL and publishable key in the build environment.")
-      setMode("enroll")
+      } catch {
+        if (!active) return
+        setError("Supabase is not configured. Set the public URL and publishable key in the build environment.")
+        setMode("enroll")
+      }
     }
+    void initialize()
     return () => { active = false }
   }, [])
 
