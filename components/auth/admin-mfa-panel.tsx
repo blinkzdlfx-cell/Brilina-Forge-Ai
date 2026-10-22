@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Image from "next/image"
 import { useRouter } from "next/navigation"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
@@ -8,7 +9,8 @@ import { createClient } from "@/lib/supabase/client"
 
 export function AdminMfaPanel() {
   const router = useRouter()
-  const [supabase, setSupabase] = React.useState<SupabaseClient | null>(null)
+  const supabaseRef = React.useRef<SupabaseClient | null>(null)
+  const [clientReady, setClientReady] = React.useState(false)
   const [factorId, setFactorId] = React.useState("")
   const [qrCode, setQrCode] = React.useState("")
   const [secret, setSecret] = React.useState("")
@@ -21,14 +23,16 @@ export function AdminMfaPanel() {
     let active = true
     try {
       const client = createClient()
-      setSupabase(client)
+      supabaseRef.current = client
       void client.auth.mfa.listFactors().then(({ data, error: factorError }) => {
         if (!active) return
         if (factorError) {
+          setClientReady(true)
           setError("Could not check authenticator setup. Refresh and try again.")
           setMode("enroll")
           return
         }
+        setClientReady(true)
         const verified = data.totp.find((factor) => factor.status === "verified")
         if (verified) {
           setFactorId(verified.id)
@@ -45,6 +49,7 @@ export function AdminMfaPanel() {
   }, [])
 
   async function beginEnrollment() {
+    const supabase = supabaseRef.current
     if (!supabase) return
     setBusy(true)
     setError("")
@@ -72,6 +77,7 @@ export function AdminMfaPanel() {
 
   async function verify(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    const supabase = supabaseRef.current
     if (!supabase || !factorId) return
     if (!/^\d{6,8}$/.test(code.trim())) {
       setError("Enter the current code from your authenticator app.")
@@ -107,7 +113,7 @@ export function AdminMfaPanel() {
       </div>
       {mode === "loading" && <p className="text-sm text-muted-foreground">Checking authenticator setup…</p>}
       {mode === "enroll" && !qrCode && (
-        <button type="button" disabled={busy || !supabase} onClick={() => void beginEnrollment()} className="h-11 w-full rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-60">
+        <button type="button" disabled={busy || !clientReady} onClick={() => void beginEnrollment()} className="h-11 w-full rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-60">
           {busy ? "Preparing…" : "Set up authenticator"}
         </button>
       )}
@@ -115,9 +121,9 @@ export function AdminMfaPanel() {
         <div className="space-y-3 rounded-xl border border-border p-4">
           <p className="text-sm">Scan this QR code with your authenticator app, then enter the generated code below.</p>
           {/* Supabase returns a data URI for the QR code; it is not persisted. */}
-          <img src={qrCode} alt="Authenticator setup QR code" className="mx-auto size-48 rounded-lg bg-white p-2" />
+          <Image src={qrCode} alt="Authenticator setup QR code" width={192} height={192} unoptimized className="mx-auto size-48 rounded-lg bg-white p-2" />
           <details>
-            <summary className="cursor-pointer text-sm text-muted-foreground">Can't scan the QR code?</summary>
+            <summary className="cursor-pointer text-sm text-muted-foreground">Can&apos;t scan the QR code?</summary>
             <code className="mt-2 block break-all text-xs">{secret}</code>
           </details>
         </div>
