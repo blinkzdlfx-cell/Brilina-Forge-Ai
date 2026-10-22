@@ -31,6 +31,8 @@ export async function POST(request: Request) {
     const admin = createAdminClient()
     if (body.action === "start") {
       const now = Date.now()
+      // Opportunistically remove expired sessions; no audio is stored in this table.
+      await admin.from("voice_recording_sessions").delete().lt("expires_at", new Date(now).toISOString())
       const { data, error: insertError } = await admin
         .from("voice_recording_sessions")
         .insert({
