@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { Ellipsis, LogOut, SquarePen } from "lucide-react"
+import { Ellipsis, KeyRound, LogOut, SquarePen } from "lucide-react"
 
 import { type GatewayModel } from "@/lib/models"
 import { ModelSelect } from "@/components/model-select"
@@ -86,6 +86,18 @@ export function ChatHeaderControls({
           aria-label="More options"
           className="absolute right-0 top-full z-50 mt-2 min-w-40 rounded-2xl border border-border/70 bg-popover/95 p-2 shadow-xl backdrop-blur-xl"
         >
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-muted"
+            onClick={() => {
+              setMenuOpen(false)
+              router.push("/change-password")
+            }}
+          >
+            <KeyRound className="size-4" />
+            Change password
+          </button>
           <button
             type="button"
             role="menuitem"
