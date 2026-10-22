@@ -72,6 +72,6 @@ GitHub Actions runs unit tests, lint, type checking, and the Cloudflare Worker b
 
 The chat endpoint is currently unauthenticated, so anyone who can reach it may consume Workers AI and Tavily quota. The transcription endpoint is explicitly disabled unless `VOICE_TRANSCRIPTION_ENABLED=true`, rejects unsupported/oversized files, and returns generic upstream errors. Keep it disabled on public deployments until authentication and rate limiting are in place. The search tool treats retrieved webpage text as untrusted and limits the amount of data passed to the model.
 
-## Reusable foundation plan
+## Implementation specification
 
-See [docs/REUSABLE-FOUNDATION-PLAN.md](docs/REUSABLE-FOUNDATION-PLAN.md) for the architecture audit, authentication decision, modularization plan, starter-template acceptance criteria, and the future server-side failed-audio retention design.
+The current planning baseline is [docs/IMPLEMENTATION_SPEC.md](docs/IMPLEMENTATION_SPEC.md). It defines the staged Supabase database, owner-managed authentication, conversation persistence, private file storage, vision, PDF/document processing, and verification requirements. The future invited-user quota design is documented in [docs/architecture/INVITED_USER_LIMITS.md](docs/architecture/INVITED_USER_LIMITS.md); that file is documentation-only. The older [docs/REUSABLE-FOUNDATION-PLAN.md](docs/REUSABLE-FOUNDATION-PLAN.md) remains as a historical repository audit. Its Better Auth, Neon, and R2 recommendations are superseded by the current implementation specification.
