@@ -52,7 +52,7 @@ Current constraints and cautions:
 2. There is no database, auth, or storage integration yet.
 3. Chat and transcription endpoints are currently unauthenticated. Stage 3 must protect both endpoints and all private application APIs with a verified, non-disabled session.
 4. `wrangler.jsonc` currently sets `VOICE_TRANSCRIPTION_ENABLED` to true, while older README guidance says to disable public transcription. The agreed decision is to require authentication for transcription. Stage 3 must reconcile the README and deployment configuration, preserve the feature flag, enforce session/access checks, and retain bounded audio size/duration, request timeouts, and safe errors.
-5. The chat composer currently sends selected images as file parts in the chat request. Stage 5–7 replace that flow with upload-first file references.
+5. The chat composer currently sends selected images as file parts in the chat request. Stage 6–7 replace that flow with upload-first file references.
 6. Tavily already limits results to five, truncates each excerpt to 1,200 characters, limits the response body to 128 KiB, removes duplicate normalized HTTPS URLs, retries one bounded transient failure, and reports partial results. Preserve these protections.
 7. There is no standalone search API route at present. The web-search tool executes as part of the protected chat request. If a separate search route is added later, it must use the same authentication and access checks.
 
@@ -266,7 +266,7 @@ Complete Stage 1's implementation and add its tests before moving to Stage 2. Ru
 
 **Scope:** create the fresh Supabase project schema, indexes, constraints, RLS, and private-storage policy groundwork. No application auth or persistence integration yet.
 
-**Files to add:** `supabase/migrations/0001_initial_schema.sql`, `docs/architecture/SUPABASE_SCHEMA.md`. Add a separate migration for Storage bucket/policies when the bucket is configured in Stage 5 if that keeps the schema migration clean.
+**Files to add:** `supabase/migrations/0001_initial_schema.sql`, `docs/architecture/SUPABASE_SCHEMA.md`. Add a separate migration for Storage bucket/policies when the bucket is configured in Stage 6 if that keeps the schema migration clean.
 
 **Design and assumptions:**
 
@@ -292,7 +292,7 @@ Complete Stage 1's implementation and add its tests before moving to Stage 2. Ru
 
 **Voice endpoint decision:** `POST /api/transcribe` is authenticated like the other private application APIs. It must use the verified session and fresh disabled/password-change checks; it must not accept a user identity from the request body. The feature flag remains a separate operational kill switch.
 
-**Voice recording limit:** cap each browser recording at **15 minutes maximum**. Show a visible elapsed-time indicator/countdown. At 15 minutes, automatically stop recording and submit the captured audio for transcription; insert the transcript into the composer without automatically sending the chat message. Manual Stop/Send behavior before the limit remains available. Prevent further recording beyond 15 minutes, handle upload/transcription failures without losing the user's draft where feasible, and test the timer and boundary behavior. The server must independently enforce a maximum audio duration where the format/provider permits reliable validation, plus a conservative upload byte limit and request timeout; a client-side timer alone is not a security control.
+**Voice recording limit:** cap each browser recording at **15 minutes maximum**. Do not display a recording timer or countdown in the frontend. Enforce the 15-minute maximum using a server-controlled recording session and timestamp. The recording/upload protocol must allow the server to detect the limit and finalize/auto-transcribe at 15 minutes; if the existing upload-after-stop protocol cannot support server-side auto-finalization, design the smallest secure chunk/session protocol needed. Insert the transcript into the composer without automatically sending the chat message. Manual Stop/Send behavior before the limit remains available. Prevent further recording beyond 15 minutes, handle upload/transcription failures without losing the user's draft where feasible, and test server-side duration enforcement and boundary behavior. The server must independently enforce a maximum audio duration where the format/provider permits reliable validation, plus a conservative upload byte limit and request timeout; a client-side timer alone is not a security control.
 
 **Scope:** implement email/password sign-in, owner-only admin with TOTP MFA, forced first password change, password change/reset, immediate revocation, and Brevo SMTP setup documentation.
 
@@ -394,11 +394,126 @@ Complete Stage 3's implementation and add its tests before moving to Stage 4. Ru
 - [ ] User A cannot load, update, delete, or append to User B's conversations.
 - [ ] Unauthenticated and disabled-user requests are rejected.
 
-Complete Stage 4's implementation and add its tests before moving to Stage 5. Run the consolidated test suite after Batch 4.
+Complete Stage 4's implementation and add its tests before moving to Stage 6. Run the consolidated test suite after Batch 4.
 
-## 10. Stage 5 — Supabase private file storage
 
-**Scope:** create a private bucket and secure upload/metadata/delete flow. Keep attachment UI changes for Stage 6.
+## 10. Stage 5 — Agent Workflow System
+
+**Status:** Planning only. This module is assigned to **Batch 4** as explicitly requested. It depends on the authenticated user model and persistent conversations/messages from Stages 1–4. Do not write code until the user approves the specification and Batch 4 preflight.
+
+**Goal:** For tasks requiring multiple stages, plan and execute an ordered workflow with live progress steps in chat. Ordinary single-answer chat must continue to use the existing request/streaming path unchanged and must not create a workflow. Workflow selection should be based on a generic routing/planning decision, not hardcoded task names. Do not hardcode stage names, provider services, or tool names into the planner or UI.
+
+### 5.1 Architecture
+
+1. **Planner model:** one configurable model call reads the user request and returns structured JSON validated against a schema. The plan contains ordered stages with `id`, `name`, `goal`, `order`, and `depends_on`. Generate a fresh plan per workflow request. Invalid JSON/schema output is rejected clearly; do not silently fall back to an unsafe plan.
+2. **Rules layer:** deterministic code validates and corrects plans after generation. Support generic instruction constraints such as “X last”, “split into N groups”, and “A before B”. Enforce them in code by reordering/splitting, validate dependency graphs and cycles, and fail clearly when a constraint cannot be satisfied. Do not trust the model to enforce its own constraints.
+3. **Executor:** run stages sequentially in validated order; each stage starts only after its dependencies complete. Each stage is a durable Workflow step and a separate model call, using only the tools it needs from a generic tool registry. Persist each result for later stages. Retry a failed stage once, then stop the chain and surface the failure; never skip ahead.
+4. **Status events:** emit compact events at key moments: inspecting, planning, refining, tool calls, and each stage start/finish/failure. Event shape: `run_id`, incrementing `sequence`, `type` (`thinking | tool | progress`), `label`, `state` (`pending | running | done | failed`), `timestamp`, optional small `payload`. Do not emit token-by-token or log-line events.
+5. **React/shadcn display:** build the step list from stored/realtime events. Thinking and tool types have appropriate icons; progress has no icon. The newest running step has a spinner/shimmer; completed steps are dimmed; failures have a visible error state. Use shadcn `Collapsible` to fold steps into a summary such as “Worked through N steps” when the final answer starts. Show a stop button during an active run.
+6. **Reconnect:** subscribe to Supabase Realtime for the run first, then fetch stored events ordered by sequence, merge both sources, and deduplicate by sequence. This subscribe-before-catch-up order closes the gap between initial read and live subscription. On reconnect, fetch events after the last seen sequence when possible, while still deduplicating. Release subscriptions when the run ends or the tab closes.
+7. **Runner abstraction:** define a small interface for starting a run, cancelling a run, and reporting a step result. Keep planner, rules, event schema, and UI independent of the runner. Implement Cloudflare Workflows first; do not implement both runners.
+
+### 5.2 Model configuration and optional step labels
+
+- Configure planner, executor, and optional label model choices in one server-side configuration module. Text-generation choices remain within the existing Cloudflare Workers AI plan unless a separately approved provider is necessary.
+- Optional label model: a small/fast Workers AI model produces only a 3–6 word step label from stage name, goal, and type. Use present participle while running and past tense when done.
+- Label generation must be asynchronous/best-effort and never delay or block a workflow. If it is disabled, slow, fails, or quota is low, show the stage name. Configure label generation on/off and model choice in one place.
+- Count planner, executor, and label calls against the shared Workers AI quota/budget notes. Bound planner output, stage count, result size, prompt/context, and tool outputs.
+
+### 5.3 Durable runner: Cloudflare Workflows first
+
+Use Cloudflare Workflows so a run survives a tab closing or a disconnected browser. Do not run an entire workflow inside a single HTTP request. A server endpoint starts or cancels the workflow; durable steps perform the stage work. The browser reconnects to the Supabase record/events.
+
+**Current official Cloudflare Free-plan facts checked 22 October 2026:**
+- Workflows are available on Workers Free.
+- Up to **100 concurrent running instances per account** (not 25); waiting instances do not count toward this running-instance concurrency limit.
+- **100,000 Workflow executions/requests per day** shared with the Workers daily request limit.
+- **3,000 steps per day** on Free.
+- **10 ms CPU per step/invocation** on Free; each step must fit. Network wait time is not CPU time. If meaningful orchestration work cannot fit, keep it small or reassess the runner; do not assume Paid limits while staying Free.
+- **1 MiB maximum non-stream step result** and **1 MiB maximum event payload**.
+- **100 MB maximum persisted state per Workflow instance**, not 1 MiB total state.
+- Up to **1,024 steps per Workflow**.
+- Free-plan instance state/log retention defaults to **3 days**; the durable permanent record therefore lives in Supabase.
+- Workflows pricing docs state step/storage billing began on 10 August 2026 for Paid plans; Free currently includes 3,000 steps/day and 1 GB-month storage. Recheck official docs and account dashboard before deployment because limits and pricing can change.
+
+Official references:
+- Cloudflare Workflows limits: https://developers.cloudflare.com/workflows/reference/limits/
+- Cloudflare Workflows pricing: https://developers.cloudflare.com/workflows/reference/pricing/
+
+Design implications: set conservative application caps (initial candidates: maximum 8 stages per plan, 32 execution/tool steps per run, and 100 events per run; tune after test simulations), store large logs/diffs/file contents in Supabase Storage or an appropriately protected table and reference them from event payloads, and persist only small summaries/results in Workflow state. Return clear quota/limit errors and mark the run failed/cancelled rather than hanging.
+
+### 5.4 Supabase run/event records and access
+
+Additive migration only; do not alter existing tables for this module.
+
+- `runs`: `id`, `user_id`, `conversation_id`, `status`, `plan`, `constraints`, `created_at`, `finished_at`. Status: `running | completed | failed | cancelled`.
+- `run_events`: `id`, `run_id`, `sequence`, `type`, `label`, `state`, `payload`, `created_at`. Add a unique constraint on `(run_id, sequence)`.
+- Add foreign keys and indexes for user/run/sequence/time lookups, status, and retention queries. Validate the referenced conversation belongs to the same authenticated user.
+- RLS on both tables: users can read only their own runs and events through ownership checks. Clients cannot insert/update/delete events or mutate run ownership/status/plan. Only trusted server-side code using the server-only service-role key writes run/event rows.
+- Starting, cancelling, and reading runs require a verified, non-disabled session and fresh access-state check. Derive `user_id` from the server-verified session, never from request input. Revoked users must not start new runs or continue using application APIs; cancellation/cleanup must still be able to terminate their active workflow safely.
+- Retention: define a scheduled cleanup policy for old events and finished runs, with a configurable age and per-run event cap. Keep compact durable run summaries as long as needed for the chat experience; prune event detail and referenced large artifacts to fit free-tier storage. Never rely on Cloudflare's 3-day workflow state as the permanent history.
+
+### 5.5 Event delivery and Realtime budget
+
+Do not build a Worker endpoint that polls Supabase in a loop. Use Supabase Realtime for live updates and a catch-up read for durable history. Subscribe first, then fetch stored events, then merge and deduplicate by sequence. A single tab should use one subscription per active run; unsubscribe when finished or closed. Handle Realtime disconnect/rate-limit errors by reconnecting and replaying missed events from Supabase.
+
+**Current Supabase Free limits checked 22 October 2026:**
+- Realtime concurrent connections: **200**.
+- Messages per second: **100**.
+- Channel joins per second: **100**.
+- Channels per connection: **100**.
+- Broadcast payload maximum: **256 KB**; design payloads far smaller.
+- Realtime message quota: **2 million messages/month** on Free. Database-change delivery counts per listening client, so multiple tabs/clients increase usage.
+- Confirm these values in the actual Supabase project dashboard before rollout; project-specific configuration and plan terms can change.
+
+Official references:
+- Supabase Realtime limits: https://supabase.com/docs/guides/realtime/limits
+- Supabase Realtime message usage: https://supabase.com/docs/guides/platform/manage-your-usage/realtime-messages
+
+Emit only one event per stage/tool call or important state transition, cap events per run, never emit per token/log line, keep payloads small, and reference larger results stored separately. Verify a simulated full coding day with many runs and two tabs against connection/message budgets. If Realtime is unavailable, show a recoverable connection status and use explicit user-triggered/reconnect catch-up reads; do not create a tight Worker polling loop.
+
+### 5.6 Cancellation, errors, and quota behavior
+
+- The stop button requests cancellation through the runner interface. Stop after the current durable step reaches a safe boundary, then set `runs.status = 'cancelled'` and persist a terminal event. Do not claim instant interruption of an already-running provider call unless that call supports cancellation.
+- One retry is allowed for a failed stage; after the second failure, stop the workflow and mark it failed. Never continue dependent stages after a failure.
+- Workflow/Workers AI/Tavily/Supabase/Realtime quota exhaustion, timeouts, invalid plans, unsupported constraints, and provider failures must produce a visible readable error and a terminal failed state, not a silent hang.
+- Log the plan, stage result summaries, timings, retry count, and failure location without secrets. Avoid logging raw user prompts, file contents, auth tokens, or sensitive tool results unless strictly necessary; prefer IDs and redacted summaries.
+- Apply the future per-user invited-user limits design to workflows; document run/day and steps/run as candidate future limits, not active quotas.
+
+### 5.7 Inngest fallback evaluation — do not implement now
+
+Cloudflare Workflows remains the first runner. Reconsider Inngest only if a real scenario cannot fit Cloudflare Free limits, a stage cannot be made to fit the Free per-step CPU limit, or reliability tests reveal unresolved workflow durability problems. The current Inngest pricing/docs checked 22 October 2026 list **50,000 executions/month**, **5 concurrent steps**, **500,000 events/month**, **50 realtime connections**, and **24-hour trace history** on Free; do not assume the older “50k steps/month and 7-day history” description is accurate. Confirm whether the execution metric includes the function invocation plus each step before estimating quota.
+
+Official references:
+- Inngest pricing: https://www.inngest.com/pricing
+- Inngest durable execution limits: https://www.inngest.com/docs/durable-execution/limits
+
+A swap would implement the existing runner interface with an Inngest adapter, map start/cancel/result operations to Inngest functions/events, and retain the same Supabase `runs`/`run_events` records, planner, rule validator, tool registry, React display, sequence-based catch-up, and authorization. Do not build both runners or make the UI depend on vendor-specific APIs.
+
+### 5.8 Stage 5 verification checklist
+
+- [ ] Ordinary single-answer chat streams exactly as before and does not create a workflow.
+- [ ] Planner JSON is schema-validated; invalid plans are rejected safely.
+- [ ] A constraint such as “X last” is enforced by code even if the planner orders it incorrectly.
+- [ ] Unsupported/impossible constraints produce a clear error.
+- [ ] Stages execute in strict order; dependency/cycle validation works; failure retries once and then stops the chain.
+- [ ] Each stage uses its own durable step/model call and only registered required tools.
+- [ ] Event types/states are valid and sequence numbers increase uniquely per run.
+- [ ] Closing a tab does not stop a run; reopening restores prior progress.
+- [ ] Reconnect subscribes first, fetches stored events second, merges and deduplicates, with no missing or duplicate UI steps.
+- [ ] Stop cancels at a safe step boundary and marks the run cancelled.
+- [ ] Label-model failure/slow quota fallback uses the stage name without delaying execution.
+- [ ] RLS prevents one user from reading another user's runs/events.
+- [ ] Revoked users cannot start runs or access run data.
+- [ ] No Worker endpoint polls Supabase in a loop.
+- [ ] Events are per stage/tool/state transition, small, and capped; large output is referenced from durable storage.
+- [ ] Simulated full-day usage with two tabs stays within Realtime limits and releases subscriptions.
+- [ ] Free-plan quotas and caps produce readable errors rather than hangs.
+- [ ] Runner interface allows an Inngest adapter without changing UI/planner/rules/events.
+
+## 11. Stage 6 — Supabase private file storage
+
+**Scope:** create a private bucket and secure upload/metadata/delete flow. Keep attachment UI changes for Stage 7.
 
 **Files:** `app/api/files/route.ts`, `app/api/files/[fileId]/route.ts` or equivalent existing route conventions, `lib/files/validation.ts`, `lib/supabase/storage.ts`, Storage policy migration/docs, and tests.
 
@@ -406,7 +521,7 @@ Complete Stage 4's implementation and add its tests before moving to Stage 5. Ru
 
 - Create a private bucket named `user-files`.
 - Store files under an opaque path shaped like `<user-uuid>/<file-uuid>/<safe-filename>`.
-- Start with PNG/JPEG/WebP; add PDF/TXT/DOCX only in Stage 8 when processing is available.
+- Start with PNG/JPEG/WebP; add PDF/TXT/DOCX only in Stage 9 when processing is available.
 - Resize/compress images in the browser before upload, but independently validate actual file size, signature/type, and allowed MIME type server-side.
 - Choose and document conservative byte/dimension limits based on the Supabase free plan and selected provider. Do not increase the existing 1 MiB per-image / 3 MiB aggregate application limits without tests and a documented reason.
 - Create metadata only after a successful upload, and verify actual storage object size/ownership before using a file.
@@ -428,9 +543,9 @@ Complete Stage 4's implementation and add its tests before moving to Stage 5. Ru
 - [ ] Failed uploads can be retried safely.
 - [ ] Upload and storage quota errors are clear and do not corrupt chat history.
 
-Complete Stage 5's implementation and add its tests before moving to Stage 6. Run the consolidated test suite after Batch 4.
+Complete Stage 6's implementation and add its tests before moving to Stage 7. Run the consolidated test suite after Batch 4.
 
-## 11. Stage 6 — Attachment drawer
+## 11. Stage 7 — Attachment drawer
 
 **Scope:** replace direct image-in-chat uploads with upload-first file references while preserving the current composer and voice controls.
 
@@ -439,7 +554,7 @@ Complete Stage 5's implementation and add its tests before moving to Stage 6. Ru
 **Design:**
 
 - The plus button opens a mobile-friendly bottom drawer.
-- Enable only implemented actions. Initially, image upload is enabled. Document upload appears only when PDF support is actually working in Stage 8.
+- Enable only implemented actions. Initially, image upload is enabled. Document upload appears only when PDF support is actually working in Stage 9.
 - Show previews, file names, upload progress, removal controls, and recoverable errors.
 - Preserve the draft when the drawer opens/closes.
 - On selection: validate → resize/compress images → upload to private Supabase Storage → create metadata → attach the file ID/reference to the pending message.
@@ -459,9 +574,9 @@ Complete Stage 5's implementation and add its tests before moving to Stage 6. Ru
 - [ ] No unfinished or nonfunctional buttons are shown.
 - [ ] Existing composer, model selector, and voice controls still work.
 
-Complete Stage 6's implementation and add its tests before moving to Stage 7. Run the consolidated test suite after Batch 4.
+Complete Stage 7's implementation and add its tests before moving to Stage 8. Run the consolidated test suite after Batch 4.
 
-## 12. Stage 7 — External vision
+## 12. Stage 8 — External vision
 
 **Scope:** route image questions to an external hosted vision provider while normal text generation remains on Cloudflare Workers AI.
 
@@ -490,9 +605,9 @@ Complete Stage 6's implementation and add its tests before moving to Stage 7. Ru
 - [ ] Provider timeout, quota, and unavailable errors are safe and actionable.
 - [ ] Normal chat, search, persistence, and voice remain functional.
 
-Complete Stage 7's implementation and add its tests before moving to Stage 8. Run the consolidated test suite after Batch 4.
+Complete Stage 8's implementation and add its tests before moving to Stage 9. Run the consolidated test suite after Batch 4.
 
-## 13. Stage 8 — PDF, TXT, and DOCX
+## 13. Stage 9 — PDF, TXT, and DOCX
 
 **Scope:** add document processing, in this order: PDF first, then TXT, then DOCX.
 
@@ -523,9 +638,9 @@ Complete Stage 7's implementation and add its tests before moving to Stage 8. Ru
 - [ ] Attachment UI enables each format only after its backend works.
 - [ ] Normal chat, vision, Tavily, persistence, and voice remain functional.
 
-Complete Stage 8's implementation and add its tests before moving to Stage 9. Run the consolidated test suite after Batch 4.
+Complete Stage 9's implementation and add its tests before moving to Stage 10. Run the consolidated test suite after Batch 4.
 
-## 14. Stage 9 — Supabase keep-alive job
+## 14. Stage 10 — Supabase keep-alive job
 
 **Scope:** configure a Cloudflare Cron Trigger to make a lightweight request to Supabase at the lowest frequency that satisfies the applicable plan activity requirement.
 
@@ -551,9 +666,9 @@ Complete Stage 8's implementation and add its tests before moving to Stage 9. Ru
 - [ ] Schedule and free-plan caveats are documented.
 - [ ] Normal request handling and deployment remain functional.
 
-Complete Stage 9's implementation and add its tests before moving to Stage 10. Run the consolidated test suite after Batch 4.
+Complete Stage 10's implementation and add its tests before moving to Stage 11. Run the consolidated test suite after Batch 4.
 
-## 15. Stage 10 — End-to-end verification
+## 16. Stage 11 — End-to-end verification
 
 Run the full suite after the earlier stages have individually passed.
 
@@ -586,7 +701,7 @@ Run the full suite after the earlier stages have individually passed.
 - [ ] Unit tests, lint, typecheck, and `pnpm build:worker` pass.
 - [ ] Deployment is not performed until explicitly authorized.
 
-## 16. Invited-user limits — documentation only
+## 17. Invited-user limits — documentation only
 
 Create `docs/architecture/INVITED_USER_LIMITS.md` as a future design note only. Do not implement code, database tables, policies, or UI for quotas in this phase.
 
@@ -620,7 +735,7 @@ Before coding each stage, provide a short design summary, exact files to change,
 This specification is planning only. Wait for explicit approval before implementing any application code or infrastructure changes.
 
 
-## 17. Brilina Dev public landing page, Forge entry point, and custom domain
+## 18. Brilina Dev public landing page, Forge entry point, and custom domain
 
 The public site is a Brilina Dev platform landing page, not a default sign-in screen. Brilina Forge AI is one product within the wider Brilina Dev platform; the landing page should introduce the platform and provide clear navigation to Forge and future products, services, documentation, and contact destinations as those destinations become real. Do not show dead buttons or claim unavailable products are live. Public visitors may view the landing page without an account. Access to the private Forge workspace remains invite-only and requires sign-in; public sign-up stays disabled.
 
@@ -651,15 +766,15 @@ The public site is a Brilina Dev platform landing page, not a default sign-in sc
 - [ ] Auth callback, password-reset redirect, and allowed redirect URLs use the exact Forge production hostname.
 
 
-## 18. Four implementation batches for the ten stages
+## 19. Four implementation batches for the eleven stages
 
-The work remains exactly **ten numbered stages**. For execution efficiency, group those stages into four implementation batches; this grouping does not add stages or change their required order. Before each batch, provide a concise preflight summary of design, affected files, assumptions, risks, and tests. Implement the batch's stages in order, finish their local verification, and then proceed to the next batch. After all four batches, run the full end-to-end test pass in Stage 10. Do not deploy or begin GitHub integration without separate explicit approval.
+The work now contains **eleven numbered stages**, including the Agent Workflow System as Stage 5 immediately after conversation persistence. The user requested that this new module be delivered in Batch 4, so Batch 4 intentionally implements Stage 5 after the foundational stages and existing provider/storage stages are ready; Stage numbers describe the dependency/module map, while this batch assignment is the approved delivery grouping. For execution efficiency, group those stages into four implementation batches; this grouping does not add stages or change their required order. Before each batch, provide a concise preflight summary of design, affected files, assumptions, risks, and tests. Implement the batch's stages in order, finish their local verification, and then proceed to the next batch. After all four batches, run the full end-to-end test pass in Stage 11. Do not deploy or begin GitHub integration without separate explicit approval.
 
 | Batch | Included stages | Main outcome |
 |---|---|---|
 | Batch 1 | Stage 1–3 | Tavily aggregate cap; Supabase schema/RLS foundation; authenticated owner-managed access, MFA, password lifecycle, and protected transcription |
-| Batch 2 | Stage 4–6 | Conversation/message persistence; private Supabase Storage; working attachment drawer and upload flow |
-| Batch 3 | Stage 7–9 | External vision provider; PDF then TXT/DOCX processing; Supabase keep-alive cron |
-| Batch 4 | Stage 10 plus any stage-specific acceptance fixes | Full end-to-end test run, security/quota checks, build/typecheck/lint, and resolution of discovered regressions |
+| Batch 2 | Stage 4, then Stages 6–7 | Conversation/message persistence; private Supabase Storage; working attachment drawer and upload flow |
+| Batch 3 | Stage 8–9 | External vision provider; PDF then TXT/DOCX processing; Supabase keep-alive cron |
+| Batch 4 | Stage 11 plus any stage-specific acceptance fixes | Full end-to-end test run, security/quota checks, build/typecheck/lint, and resolution of discovered regressions |
 
-Stage 10 remains the tenth and final stage. Batch 4 is the final verification/fix batch, not a new implementation stage. Domain and public landing-page work must be planned explicitly alongside deployment/setup decisions after the exact domain is confirmed; do not silently expand the ten-stage backend scope. GitHub integration stays out of scope until all ten stages pass and the user approves moving to that work.
+Stage 11 remains the tenth and final stage. Batch 4 is the final verification/fix batch, not a new implementation stage. Domain and public landing-page work must be planned explicitly alongside deployment/setup decisions after the exact domain is confirmed; do not silently expand the ten-stage backend scope. GitHub integration stays out of scope until all ten stages pass and the user approves moving to that work.
