@@ -56,7 +56,7 @@ export function AdminMfaPanel() {
     setBusy(true)
     setError("")
     try {
-      const { data: factors, error: listError } = await supabase.auth.mfa.listFactors()
+      const { error: listError } = await supabase.auth.mfa.listFactors()
       if (listError) throw listError
       const { data, error: enrollError } = await supabase.auth.mfa.enroll({
         factorType: "totp",
