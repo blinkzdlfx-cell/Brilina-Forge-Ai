@@ -161,6 +161,7 @@ export async function POST(request: Request) {
       return jsonError("The transcription service returned no transcript.", 502)
     }
 
+    await admin.from("voice_recording_sessions").delete().eq("id", session.id).eq("user_id", context.user.id)
     return NextResponse.json({ text: result.text.trim() })
   } catch (error) {
     const message = error instanceof Error ? error.message : ""
