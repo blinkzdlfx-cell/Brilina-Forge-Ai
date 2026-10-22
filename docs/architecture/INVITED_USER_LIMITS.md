@@ -99,3 +99,19 @@ Provider free plans can change. Before implementing any limit defaults, verify t
 - Tests cover boundaries, resets, concurrent requests, retries, disabled users, and unauthorized limit edits.
 
 **Current phase boundary:** Do not implement any of the above. This file is a design note only.
+
+
+## Workflow usage — future limits candidate
+
+The Agent Workflow System adds substantial shared-resource usage. Treat the following as candidate owner-configurable limits for a future approved quota implementation, not active enforcement in the current planning phase:
+
+- **Workflow runs per user per day** and optionally per month.
+- **Maximum stages per plan** and **maximum execution/tool steps per run**.
+- **Maximum events per run** and retention/storage budget for run histories and referenced artifacts.
+- **Planner/executor/label-model calls** as part of each user's shared Workers AI allowance.
+- **Tavily calls, file processing, and vision/document operations** initiated by workflow tools, counted against the same per-user and global provider budgets as direct use.
+- **Concurrent active runs per user** as a candidate safeguard, subject to Cloudflare Workflows account-wide limits.
+
+Enforce future limits server-side with concurrency-safe counters/transactions. A workflow must not bypass existing message, search, file, transcription, model, or tool limits by routing the action through a stage. Report which limit was reached, the reset window where known, and what remains usable. Keep large event payloads and artifacts out of Realtime messages; store them by reference and apply retention/cleanup policies.
+
+This section is documentation only. It does not authorize quota tables, enforcement code, or admin UI.
