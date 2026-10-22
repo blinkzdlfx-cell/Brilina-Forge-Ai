@@ -24,7 +24,7 @@ Copy `.env.example` to `.env.local` for local development.
 | `TAVILY_API_KEY` | For web search | Tavily API key |
 | `GROQ_API_KEY` | Optional | Enables the Groq Qwen vision model; keep server-side only |
 | `GROQ_VISION_SECONDARY_MODEL` | Optional, preview access only | Set to `meta-models/muse-spark-open` only if the Groq account is approved for this preview model |
-| `VOICE_TRANSCRIPTION_ENABLED` | Explicit opt-in | Set to `true` to enable transcription; keep off on public deployments until authentication and rate limiting are in place |
+| `VOICE_TRANSCRIPTION_ENABLED` | Explicit opt-in | Set to `true` to enable transcription; authenticated users only, with a 15-minute browser recording limit and automatic transcription at the limit |
 | `NEXTJS_ENV` | Local development | OpenNext environment mode |
 
 The `GET /api/health` endpoint reports whether the AI and search credentials are configured. It never returns their values.
@@ -52,7 +52,7 @@ The repository includes `wrangler.jsonc` and `open-next.config.ts`. OpenNext con
 3. Set the install command to `pnpm install --no-frozen-lockfile` for the first build. GitHub Actions refreshes and commits `pnpm-lock.yaml` after the checks pass; subsequent builds can use frozen-lockfile installs.
 4. Set the build command to `pnpm build:worker` for a build-only check. The separate `pnpm deploy` command deploys using Wrangler credentials and should only be used when intentionally deploying through Wrangler.
 5. Add `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AI_API_TOKEN`, and `TAVILY_API_KEY` as encrypted Worker secrets/environment variables in Cloudflare. Do not put secrets in `wrangler.jsonc`.
-6. Keep `VOICE_TRANSCRIPTION_ENABLED` unset or false on the public Worker until authentication and rate limiting are implemented. For local development, set it to `true`.
+6. Voice transcription requires an authenticated, eligible user. The feature flag is an operational kill switch; keep it unset or false when transcription should be disabled. The maximum recording duration is 15 minutes, enforced server-side with automatic transcription at the limit; no recording timer is displayed in the frontend.
 7. After deployment, open `/api/health`. Test a current-events question and confirm that the response includes source links. Test voice input separately after enabling it safely.
 
 Scripts:
@@ -70,8 +70,8 @@ GitHub Actions runs unit tests, lint, type checking, and the Cloudflare Worker b
 
 ## Security notes
 
-The chat endpoint is currently unauthenticated, so anyone who can reach it may consume Workers AI and Tavily quota. The transcription endpoint is explicitly disabled unless `VOICE_TRANSCRIPTION_ENABLED=true`, rejects unsupported/oversized files, and returns generic upstream errors. Keep it disabled on public deployments until authentication and rate limiting are in place. The search tool treats retrieved webpage text as untrusted and limits the amount of data passed to the model.
+The chat and transcription endpoints are currently unauthenticated in the existing baseline; Stage 3 must protect both with verified sessions and access-state checks. Voice recording is limited to 15 minutes by a server-controlled recording session, with automatic transcription at the limit and no visible frontend timer. The current upload-after-stop flow may need a bounded chunk/session protocol to support reliable server-side auto-finalization. The server must enforce duration/size bounds and safe errors. The planned public Brilina Dev landing page and invite-only Forge workspace/domain separation are described in `docs/IMPLEMENTATION_SPEC.md`. The search tool treats retrieved webpage text as untrusted and limits the amount of data passed to the model.
 
-## Reusable foundation plan
+## Implementation specification
 
-See [docs/REUSABLE-FOUNDATION-PLAN.md](docs/REUSABLE-FOUNDATION-PLAN.md) for the architecture audit, authentication decision, modularization plan, starter-template acceptance criteria, and the future server-side failed-audio retention design.
+The current planning baseline is [docs/IMPLEMENTATION_SPEC.md](docs/IMPLEMENTATION_SPEC.md). It defines the staged Supabase database, owner-managed authentication, conversation persistence, the Agent Workflow System, private file storage, vision, PDF/document processing, and verification requirements. The specification now has eleven stages grouped into four implementation batches; the Agent Workflow System is Stage 5 and is assigned to Batch 4 as requested. The future invited-user quota design is documented in [docs/architecture/INVITED_USER_LIMITS.md](docs/architecture/INVITED_USER_LIMITS.md); that file is documentation-only. The older [docs/REUSABLE-FOUNDATION-PLAN.md](docs/REUSABLE-FOUNDATION-PLAN.md) remains as a historical repository audit. Its Better Auth, Neon, and R2 recommendations are superseded by the current implementation specification.
