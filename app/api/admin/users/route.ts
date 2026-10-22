@@ -36,7 +36,7 @@ export async function GET() {
     const admin = createAdminClient()
     const [{ data: users, error: usersError }, { data: accessRows, error: accessError }] = await Promise.all([
       admin.auth.admin.listUsers({ page: 1, perPage: 200 }),
-      admin.from("user_access").select("user_id, disabled, must_change_password, created_at:updated_at"),
+      admin.from("user_access").select("user_id, disabled, must_change_password"),
     ])
     if (usersError || accessError) return badRequest("Could not load users.", 503)
 
@@ -120,8 +120,8 @@ export async function PATCH(request: Request) {
     if (target.app_metadata?.role === "owner") return badRequest("Owner accounts cannot be changed through user management.", 403)
 
     if (action === "disable") {
-      const { error } = await admin.from("user_access").update({ disabled: true }).eq("user_id", userId)
-      if (error) return badRequest("Could not revoke this user's access.", 503)
+      const { data: changed, error } = await admin.from("user_access").update({ disabled: true }).eq("user_id", userId).select("user_id").maybeSingle()
+      if (error || !changed) return badRequest("Could not revoke this user's access.", 503)
       // Database access state is authoritative. Auth banning is defense in depth.
       await admin.auth.admin.updateUserById(userId, { ban_duration: "876000h" }).catch(() => undefined)
       return NextResponse.json({ success: true })
@@ -130,8 +130,8 @@ export async function PATCH(request: Request) {
     if (action === "restore") {
       const { error: unbanError } = await admin.auth.admin.updateUserById(userId, { ban_duration: "none" })
       if (unbanError) return badRequest("Could not restore the authentication account. Access remains disabled.", 503)
-      const { error } = await admin.from("user_access").update({ disabled: false }).eq("user_id", userId)
-      if (error) {
+      const { data: changed, error } = await admin.from("user_access").update({ disabled: false }).eq("user_id", userId).select("user_id").maybeSingle()
+      if (error || !changed) {
         await admin.from("user_access").update({ disabled: true }).eq("user_id", userId)
         await admin.auth.admin.updateUserById(userId, { ban_duration: "876000h" }).catch(() => undefined)
         return badRequest("Could not restore this user's access. Access remains disabled.", 503)
@@ -141,9 +141,10 @@ export async function PATCH(request: Request) {
 
     const password = typeof body?.password === "string" ? body.password : ""
     if (password.length < 12 || password.length > 128) return badRequest("Use a temporary password between 12 and 128 characters.")
-    const { data: priorAccess } = await admin.from("user_access").select("must_change_password").eq("user_id", userId).maybeSingle()
-    const { error: gateError } = await admin.from("user_access").update({ must_change_password: true }).eq("user_id", userId)
-    if (gateError) return badRequest("Could not prepare the account for a password reset.", 503)
+    const { data: priorAccess, error: priorError } = await admin.from("user_access").select("must_change_password").eq("user_id", userId).maybeSingle()
+    if (priorError || !priorAccess) return badRequest("User access state is missing. The account remains restricted.", 503)
+    const { data: gateUpdated, error: gateError } = await admin.from("user_access").update({ must_change_password: true }).eq("user_id", userId).select("user_id").maybeSingle()
+    if (gateError || !gateUpdated) return badRequest("Could not prepare the account for a password reset.", 503)
 
     const { error: passwordError } = await admin.auth.admin.updateUserById(userId, { password })
     if (passwordError) {
