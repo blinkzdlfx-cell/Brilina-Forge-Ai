@@ -30,7 +30,19 @@ export function UsersPanel() {
   }
 
   React.useEffect(() => {
-    void loadUsers().catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load users."))
+    let active = true
+    async function initialLoad() {
+      try {
+        const response = await fetch("/api/admin/users", { cache: "no-store" })
+        const result = await response.json().catch(() => null) as { users?: ManagedUser[]; error?: string } | null
+        if (!response.ok || !result?.users) throw new Error(result?.error ?? "Could not load users.")
+        if (active) setUsers(result.users)
+      } catch (caught) {
+        if (active) setError(caught instanceof Error ? caught.message : "Could not load users.")
+      }
+    }
+    void initialLoad()
+    return () => { active = false }
   }, [])
 
   async function submitNewUser(event: React.FormEvent<HTMLFormElement>) {
