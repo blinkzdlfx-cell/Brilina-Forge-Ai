@@ -4,10 +4,16 @@
 **Target application branch:** `main`  
 **Specification branch:** `docs/owner-managed-auth-spec`  
 **Runtime:** Next.js 16, React 19, AI SDK, OpenNext on Cloudflare Workers  
-**Status:** Planning only. No application implementation is authorized by this document.  
-**Execution rule:** Implement the ten numbered stages in their specified order, grouped into four batches. Add/update tests alongside implementation, but run the consolidated full test suite after all four batches are complete, as requested. Do not skip a stage or start GitHub integration early. If a critical design blocker appears, stop and report it rather than silently changing scope.
+**Status:** Batch 1 (Stages 1–3) implementation in progress on feat/batch-1-foundation-auth; not yet merged or deployed.  
+**Execution rule:** The owner approved Batch 1 (Stages 1–3) on 2026-10-22. Implement each batch in its agreed grouping, add/update tests alongside implementation, and run the batch checks before proceeding. Do not skip a stage or start GitHub integration early. If a critical design blocker appears, stop and report it rather than silently changing scope.
 
 This document is the current source of truth for the planned backend, authentication, persistence, and file-handling work. It supersedes conflicting earlier recommendations in `docs/REUSABLE-FOUNDATION-PLAN.md` concerning Better Auth, Neon, Cloudflare R2, and sign-in methods. Keep that file's useful repository-audit observations, but do not follow its superseded provider decisions.
+
+## Current implementation progress
+
+- Batch 1 work is being proposed on feat/batch-1-foundation-auth: Stage 1 adds the 4,000-character aggregate Tavily excerpt budget; Stage 2 adds core Supabase schema/RLS migrations and documentation; Stage 3 adds Supabase SSR clients, protected chat/transcription APIs, owner-only AAL2 administration, password lifecycle routes, and server-timestamped voice sessions.
+- The Supabase migrations have not been applied to a live project, and Supabase Auth settings, owner bootstrap, Brevo SMTP, and Cloudflare environment variables remain operator-controlled setup tasks.
+- Passing CI does not replace live two-user RLS, email-delivery, MFA, revocation, or 15-minute voice-session acceptance tests.
 
 ## 1. Goals and fixed decisions
 
@@ -25,7 +31,7 @@ This document is the current source of truth for the planned backend, authentica
 - Keep the Supabase service-role key and all provider secrets server-side.
 - Do not implement GitHub integration in this phase. Keep core database tables general so later integrations can add separate tables without changing the core schema. Preserve existing UI and features unless a stage explicitly changes their behavior.
 - No public sign-up, invitation codes, or invite links. The owner creates accounts from the owner-only admin screen.
-- No code implementation begins until the owner approves this specification.
+- Batch 1 implementation is approved. Later batches require their own preflight and explicit approval before implementation.
 
 ## 2. Repository baseline inspected
 
