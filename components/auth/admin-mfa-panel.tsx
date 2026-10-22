@@ -58,9 +58,6 @@ export function AdminMfaPanel() {
     try {
       const { data: factors, error: listError } = await supabase.auth.mfa.listFactors()
       if (listError) throw listError
-      for (const factor of factors.totp.filter((item) => item.status === "unverified")) {
-        await supabase.auth.mfa.unenroll({ factorId: factor.id })
-      }
       const { data, error: enrollError } = await supabase.auth.mfa.enroll({
         factorType: "totp",
         friendlyName: "Brilina Forge AI owner",
