@@ -5,6 +5,8 @@
 **Baseline commit reviewed:** `1868d3e8cd8ef0fb1ef0b727116749797bb2bcca`  
 **Status:** Audit based on repository source and configuration; not yet a full runtime/security audit.
 
+> **Status: historical audit; implementation decisions superseded.** For current work, follow [`docs/IMPLEMENTATION_SPEC.md`](IMPLEMENTATION_SPEC.md). The current decision is Supabase PostgreSQL/Auth/Storage, owner-managed email/password accounts with TOTP-protected owner administration, and no R2 or Neon. The authentication decision and future storage recommendations below are retained for audit history only and must not override the current implementation specification.
+
 ## Goal
 
 Keep the approved chat UI and convert the project into a reusable foundation for future AI applications. A future project should be able to clone the starter, change branding and feature configuration, supply its own secrets, and enable only the capabilities it needs.
