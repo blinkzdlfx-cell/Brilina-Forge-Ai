@@ -24,7 +24,7 @@ Copy `.env.example` to `.env.local` for local development.
 | `TAVILY_API_KEY` | For web search | Tavily API key |
 | `GROQ_API_KEY` | Optional | Enables the Groq Qwen vision model; keep server-side only |
 | `GROQ_VISION_SECONDARY_MODEL` | Optional, preview access only | Set to `meta-models/muse-spark-open` only if the Groq account is approved for this preview model |
-| `VOICE_TRANSCRIPTION_ENABLED` | Explicit opt-in | Set to `true` to enable transcription; keep off on public deployments until authentication and rate limiting are in place |
+| `VOICE_TRANSCRIPTION_ENABLED` | Explicit opt-in | Set to `true` to enable transcription; this endpoint is intentionally unauthenticated for personal use, so enable only with strict audio bounds and practical abuse controls |
 | `NEXTJS_ENV` | Local development | OpenNext environment mode |
 
 The `GET /api/health` endpoint reports whether the AI and search credentials are configured. It never returns their values.
@@ -52,7 +52,7 @@ The repository includes `wrangler.jsonc` and `open-next.config.ts`. OpenNext con
 3. Set the install command to `pnpm install --no-frozen-lockfile` for the first build. GitHub Actions refreshes and commits `pnpm-lock.yaml` after the checks pass; subsequent builds can use frozen-lockfile installs.
 4. Set the build command to `pnpm build:worker` for a build-only check. The separate `pnpm deploy` command deploys using Wrangler credentials and should only be used when intentionally deploying through Wrangler.
 5. Add `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AI_API_TOKEN`, and `TAVILY_API_KEY` as encrypted Worker secrets/environment variables in Cloudflare. Do not put secrets in `wrangler.jsonc`.
-6. Keep `VOICE_TRANSCRIPTION_ENABLED` unset or false on the public Worker until authentication and rate limiting are implemented. For local development, set it to `true`.
+6. Voice transcription is intentionally unauthenticated for personal use. Keep `VOICE_TRANSCRIPTION_ENABLED` unset or false until strict input limits and practical abuse controls have been verified; understand that anyone who can reach the endpoint may consume shared Workers AI quota. For local development, set it to `true`.
 7. After deployment, open `/api/health`. Test a current-events question and confirm that the response includes source links. Test voice input separately after enabling it safely.
 
 Scripts:
@@ -70,7 +70,7 @@ GitHub Actions runs unit tests, lint, type checking, and the Cloudflare Worker b
 
 ## Security notes
 
-The chat endpoint is currently unauthenticated, so anyone who can reach it may consume Workers AI and Tavily quota. The transcription endpoint is explicitly disabled unless `VOICE_TRANSCRIPTION_ENABLED=true`, rejects unsupported/oversized files, and returns generic upstream errors. Keep it disabled on public deployments until authentication and rate limiting are in place. The search tool treats retrieved webpage text as untrusted and limits the amount of data passed to the model.
+The chat endpoint is currently unauthenticated in the existing baseline, so anyone who can reach it may consume Workers AI and Tavily quota; Stage 3 must protect it. Voice transcription is a deliberate exception and may remain unauthenticated for personal use when `VOICE_TRANSCRIPTION_ENABLED=true`; it rejects unsupported/oversized files and returns generic upstream errors, but public access can still consume Workers AI quota. Use strict limits and practical abuse controls. The planned public Brilina Dev landing page and invite-only Forge workspace/domain separation are described in `docs/IMPLEMENTATION_SPEC.md`. The search tool treats retrieved webpage text as untrusted and limits the amount of data passed to the model.
 
 ## Implementation specification
 
