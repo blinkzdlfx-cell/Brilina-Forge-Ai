@@ -5,7 +5,7 @@
 **Specification branch:** `docs/owner-managed-auth-spec`  
 **Runtime:** Next.js 16, React 19, AI SDK, OpenNext on Cloudflare Workers  
 **Status:** Planning only. No application implementation is authorized by this document.  
-**Execution rule:** Complete and verify each numbered stage before starting the next.
+**Execution rule:** Implement the ten numbered stages in their specified order, grouped into four batches. Add/update tests alongside implementation, but run the consolidated full test suite after all four batches are complete, as requested. Do not skip a stage or start GitHub integration early. If a critical design blocker appears, stop and report it rather than silently changing scope.
 
 This document is the current source of truth for the planned backend, authentication, persistence, and file-handling work. It supersedes conflicting earlier recommendations in `docs/REUSABLE-FOUNDATION-PLAN.md` concerning Better Auth, Neon, Cloudflare R2, and sign-in methods. Keep that file's useful repository-audit observations, but do not follow its superseded provider decisions.
 
@@ -50,8 +50,8 @@ Current constraints and cautions:
 
 1. Chats exist only in client memory and disappear on refresh.
 2. There is no database, auth, or storage integration yet.
-3. Chat and transcription endpoints are currently unauthenticated. Stage 3 must protect chat and all private application APIs. Voice transcription is an explicit exception: it remains unauthenticated for the owner's personal use, but must retain strict input limits, a feature flag, safe errors, and practical abuse controls because the endpoint is publicly callable.
-4. `wrangler.jsonc` currently sets `VOICE_TRANSCRIPTION_ENABLED` to true, while the README warns that transcription should remain disabled on a public deployment until authentication and rate limiting exist. The agreed product decision is to keep transcription unauthenticated for personal use. Stage 3 must reconcile the README and deployment configuration with that decision, preserve the feature flag, and enforce bounded audio size/duration, request timeouts, safe errors, and practical rate limiting or equivalent abuse controls where feasible. Document that an unauthenticated endpoint can be abused and consume the shared Workers AI quota.
+3. Chat and transcription endpoints are currently unauthenticated. Stage 3 must protect both endpoints and all private application APIs with a verified, non-disabled session.
+4. `wrangler.jsonc` currently sets `VOICE_TRANSCRIPTION_ENABLED` to true, while older README guidance says to disable public transcription. The agreed decision is to require authentication for transcription. Stage 3 must reconcile the README and deployment configuration, preserve the feature flag, enforce session/access checks, and retain bounded audio size/duration, request timeouts, and safe errors.
 5. The chat composer currently sends selected images as file parts in the chat request. Stage 5–7 replace that flow with upload-first file references.
 6. Tavily already limits results to five, truncates each excerpt to 1,200 characters, limits the response body to 128 KiB, removes duplicate normalized HTTPS URLs, retries one bounded transient failure, and reports partial results. Preserve these protections.
 7. There is no standalone search API route at present. The web-search tool executes as part of the protected chat request. If a separate search route is added later, it must use the same authentication and access checks.
@@ -260,7 +260,7 @@ Add a maximum **4,000 combined characters of excerpt content** across all accept
 - [ ] Malformed and oversized provider responses fail safely.
 - [ ] Unit tests, lint, typecheck, and Worker build pass.
 
-Do not start Stage 2 until Stage 1 passes.
+Complete Stage 1's implementation and add its tests before moving to Stage 2. Run the consolidated test suite after Batch 4.
 
 ## 7. Stage 2 — Supabase foundation
 
@@ -349,7 +349,7 @@ Before coding, verify compatibility with the repository's Next.js 16, React 19, 
 - [ ] Auth and admin attempts are rate-limited where practical.
 - [ ] Existing UI and the Cloudflare Worker build remain functional.
 
-Do not start Stage 4 until Stage 3 passes.
+Complete Stage 3's implementation and add its tests before moving to Stage 4. Run the consolidated test suite after Batch 4.
 
 ## 9. Stage 4 — Conversation and message persistence
 
@@ -394,7 +394,7 @@ Do not start Stage 4 until Stage 3 passes.
 - [ ] User A cannot load, update, delete, or append to User B's conversations.
 - [ ] Unauthenticated and disabled-user requests are rejected.
 
-Do not start Stage 5 until Stage 4 passes.
+Complete Stage 4's implementation and add its tests before moving to Stage 5. Run the consolidated test suite after Batch 4.
 
 ## 10. Stage 5 — Supabase private file storage
 
@@ -428,7 +428,7 @@ Do not start Stage 5 until Stage 4 passes.
 - [ ] Failed uploads can be retried safely.
 - [ ] Upload and storage quota errors are clear and do not corrupt chat history.
 
-Do not start Stage 6 until Stage 5 passes.
+Complete Stage 5's implementation and add its tests before moving to Stage 6. Run the consolidated test suite after Batch 4.
 
 ## 11. Stage 6 — Attachment drawer
 
@@ -459,7 +459,7 @@ Do not start Stage 6 until Stage 5 passes.
 - [ ] No unfinished or nonfunctional buttons are shown.
 - [ ] Existing composer, model selector, and voice controls still work.
 
-Do not start Stage 7 until Stage 6 passes.
+Complete Stage 6's implementation and add its tests before moving to Stage 7. Run the consolidated test suite after Batch 4.
 
 ## 12. Stage 7 — External vision
 
@@ -490,7 +490,7 @@ Do not start Stage 7 until Stage 6 passes.
 - [ ] Provider timeout, quota, and unavailable errors are safe and actionable.
 - [ ] Normal chat, search, persistence, and voice remain functional.
 
-Do not start Stage 8 until Stage 7 passes.
+Complete Stage 7's implementation and add its tests before moving to Stage 8. Run the consolidated test suite after Batch 4.
 
 ## 13. Stage 8 — PDF, TXT, and DOCX
 
@@ -523,7 +523,7 @@ Do not start Stage 8 until Stage 7 passes.
 - [ ] Attachment UI enables each format only after its backend works.
 - [ ] Normal chat, vision, Tavily, persistence, and voice remain functional.
 
-Do not start Stage 9 until Stage 8 passes.
+Complete Stage 8's implementation and add its tests before moving to Stage 9. Run the consolidated test suite after Batch 4.
 
 ## 14. Stage 9 — Supabase keep-alive job
 
@@ -551,7 +551,7 @@ Do not start Stage 9 until Stage 8 passes.
 - [ ] Schedule and free-plan caveats are documented.
 - [ ] Normal request handling and deployment remain functional.
 
-Do not start Stage 10 until Stage 9 passes.
+Complete Stage 9's implementation and add its tests before moving to Stage 10. Run the consolidated test suite after Batch 4.
 
 ## 15. Stage 10 — End-to-end verification
 
