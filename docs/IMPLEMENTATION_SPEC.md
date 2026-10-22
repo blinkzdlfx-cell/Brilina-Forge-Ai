@@ -101,7 +101,7 @@ The sign-in flow must reject disabled accounts before granting an application se
 Every protected application API route must require a server-verified session and a fresh, non-disabled `user_access` row. This includes:
 
 - `/api/chat`
-- `/api/transcribe` is intentionally unauthenticated as a documented exception for personal voice input. It must not expose private data and must enforce strict audio limits, timeout/cancellation, safe errors, and available abuse controls.
+- `/api/transcribe` is a protected API and requires a verified, non-disabled user session, including a fresh access-state check. It must enforce strict audio limits, timeout/cancellation, and safe errors.
 - conversation and message APIs
 - file upload, metadata, download/signing, and delete APIs
 - any dedicated search API added later
@@ -109,11 +109,11 @@ Every protected application API route must require a server-verified session and
 
 The Tavily tool is internal to `/api/chat` today and inherits chat authorization.
 
-Intentional authentication exceptions include the minimum endpoints needed to sign in, sign out, request password reset, complete a password reset, and complete required MFA enrollment/challenge, plus `/api/transcribe` as the explicitly approved unauthenticated voice endpoint. These endpoints must not expose private application data. Transcription must be treated as publicly callable and quota-sensitive. Password-reset requests must not reveal whether an email exists. A disabled account must not gain access to application APIs through an authentication exception.
+Intentional authentication exceptions are limited to the minimum endpoints needed to sign in, sign out, request password reset, complete a password reset, and complete required MFA enrollment/challenge. These endpoints must not expose private application data. Password-reset requests must not reveal whether an email exists. A disabled account must not gain access to application APIs through an authentication exception.
 
 The health endpoint may remain public only if it continues to expose sanitized status/configuration booleans and no secrets, user information, or detailed provider diagnostics.
 
-If `must_change_password` is true, the user may access only the password-change flow, sign-out, and the minimum authentication/MFA operations required to complete account setup. Chat, conversations, search, files, and other normal application APIs remain blocked until the password has been changed successfully. The separately approved unauthenticated `/api/transcribe` exception remains technically callable; do not let it access a user's private data.
+If `must_change_password` is true, the user may access only the password-change flow, sign-out, and the minimum authentication/MFA operations required to complete account setup. Chat, conversations, search, transcription, files, and other normal application APIs remain blocked until the password has been changed successfully.
 
 ### 4.4 Owner admin and MFA
 
@@ -290,6 +290,10 @@ Do not start Stage 2 until Stage 1 passes.
 
 ## 8. Stage 3 — Supabase Auth and owner-managed users
 
+**Voice endpoint decision:** `POST /api/transcribe` is authenticated like the other private application APIs. It must use the verified session and fresh disabled/password-change checks; it must not accept a user identity from the request body. The feature flag remains a separate operational kill switch.
+
+**Voice recording limit:** cap each browser recording at **15 minutes maximum**. Show a visible elapsed-time indicator/countdown. At 15 minutes, automatically stop recording and submit the captured audio for transcription; insert the transcript into the composer without automatically sending the chat message. Manual Stop/Send behavior before the limit remains available. Prevent further recording beyond 15 minutes, handle upload/transcription failures without losing the user's draft where feasible, and test the timer and boundary behavior. The server must independently enforce a maximum audio duration where the format/provider permits reliable validation, plus a conservative upload byte limit and request timeout; a client-side timer alone is not a security control.
+
 **Scope:** implement email/password sign-in, owner-only admin with TOTP MFA, forced first password change, password change/reset, immediate revocation, and Brevo SMTP setup documentation.
 
 **Likely files to add/change, after inspecting current conventions and installed SDK versions:**
@@ -329,7 +333,7 @@ Before coding, verify compatibility with the repository's Next.js 16, React 19, 
 **Verification:**
 
 - [ ] Public sign-up is disabled in Supabase and unreachable through the app.
-- [ ] Unauthenticated requests to every protected API route are rejected, with `/api/transcribe` explicitly tested as the sole application-feature exception.
+- [ ] Unauthenticated requests to every protected API route, including `/api/transcribe`, are rejected.
 - [ ] Only the owner can open `/admin`, and only after a verified authenticator code.
 - [ ] Admin API routes reject a session without `aal2`.
 - [ ] First-time TOTP enrollment displays a QR code and requires successful verification.
@@ -567,7 +571,7 @@ Run the full suite after the earlier stages have individually passed.
 - [ ] Brevo password-reset email delivery and recovery flow work.
 - [ ] Revocation blocks requests immediately, including from a session token that has not expired.
 - [ ] A revoked user cannot access the app; a restored user can.
-- [ ] Unauthenticated requests to all protected APIs are rejected; `/api/transcribe` is the explicit unauthenticated exception.
+- [ ] Unauthenticated requests to all protected APIs, including `/api/transcribe`, are rejected.
 - [ ] Conversations and messages persist across refresh.
 - [ ] Retry does not create duplicate user or assistant messages.
 - [ ] Assistant status semantics for complete, interrupted, and failed are verified.
@@ -642,6 +646,20 @@ The public site is a Brilina Dev platform landing page, not a default sign-in sc
 - [ ] Landing-page navigation clearly distinguishes Brilina Forge AI from the wider platform and contains no dead links/buttons.
 - [ ] The Forge subdomain opens the Forge experience and routes sign-in to the invite-only flow.
 - [ ] Private Forge APIs reject unauthenticated and disabled users.
-- [ ] `/api/transcribe` works without sign-in only when its feature flag is enabled and rejects oversized/unsupported audio safely.
+- [ ] `/api/transcribe` requires sign-in, rejects disabled users, and rejects oversized/unsupported audio safely.
 - [ ] Root and Forge hostnames have valid HTTPS and correct Cloudflare routing.
 - [ ] Auth callback, password-reset redirect, and allowed redirect URLs use the exact Forge production hostname.
+
+
+## 18. Four implementation batches for the ten stages
+
+The work remains exactly **ten numbered stages**. For execution efficiency, group those stages into four implementation batches; this grouping does not add stages or change their required order. Before each batch, provide a concise preflight summary of design, affected files, assumptions, risks, and tests. Implement the batch's stages in order, finish their local verification, and then proceed to the next batch. After all four batches, run the full end-to-end test pass in Stage 10. Do not deploy or begin GitHub integration without separate explicit approval.
+
+| Batch | Included stages | Main outcome |
+|---|---|---|
+| Batch 1 | Stage 1–3 | Tavily aggregate cap; Supabase schema/RLS foundation; authenticated owner-managed access, MFA, password lifecycle, and protected transcription |
+| Batch 2 | Stage 4–6 | Conversation/message persistence; private Supabase Storage; working attachment drawer and upload flow |
+| Batch 3 | Stage 7–9 | External vision provider; PDF then TXT/DOCX processing; Supabase keep-alive cron |
+| Batch 4 | Stage 10 plus any stage-specific acceptance fixes | Full end-to-end test run, security/quota checks, build/typecheck/lint, and resolution of discovered regressions |
+
+Stage 10 remains the tenth and final stage. Batch 4 is the final verification/fix batch, not a new implementation stage. Domain and public landing-page work must be planned explicitly alongside deployment/setup decisions after the exact domain is confirmed; do not silently expand the ten-stage backend scope. GitHub integration stays out of scope until all ten stages pass and the user approves moving to that work.
