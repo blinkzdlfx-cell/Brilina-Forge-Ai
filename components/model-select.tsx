@@ -9,7 +9,6 @@ import {
   SelectGroup,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select"
 
 export function ModelSelect({
@@ -21,21 +20,38 @@ export function ModelSelect({
   value: string
   onValueChange: (value: string) => void
 }) {
+  // Only text-writing models belong in the user-facing selector. Vision models
+  // remain available internally for image requests.
   const items = React.useMemo(
-    () => models.map((model) => ({ label: model.name, value: model.id })),
+    () =>
+      models
+        .filter(
+          (model) =>
+            model.capabilities?.includes("text") &&
+            !model.capabilities?.includes("vision")
+        )
+        .map((model) => ({ label: model.name, value: model.id })),
     [models]
   )
+
+  const selectedValue = items.some((item) => item.value === value)
+    ? value
+    : (items[0]?.value ?? "")
 
   return (
     <Select
       items={items}
-      value={value}
+      value={selectedValue}
       onValueChange={(next) => {
         if (typeof next === "string") onValueChange(next)
       }}
     >
-      <SelectTrigger aria-label="Model" className="h-8 w-full min-w-0 gap-1 overflow-hidden px-1.5 text-xs bg-background sm:px-2 [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:truncate">
-        <SelectValue />
+      <SelectTrigger
+        aria-label="Choose writing model"
+        title="Choose writing model"
+        className="h-8 w-full min-w-0 gap-1 overflow-hidden rounded-full border border-border/60 bg-background px-2 text-xs shadow-none hover:bg-muted/70 sm:min-w-28 sm:px-3"
+      >
+        <span className="min-w-0 truncate">Writing model</span>
       </SelectTrigger>
       <SelectContent alignItemWithTrigger={false}>
         <SelectGroup>

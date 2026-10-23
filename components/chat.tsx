@@ -126,7 +126,8 @@ export function Chat({ models }: { models: GatewayModel[] }) {
       }
 
       setAttachmentError("")
-      if (requestModel !== resolvedModel) setModel(requestModel)
+      // Keep the user's Writing model selected. Vision models are chosen internally
+      // for image requests and are not exposed in the model selector.
 
       if (files.length > 0) {
         const transfer = new DataTransfer()
