@@ -26,7 +26,10 @@ export default async function AdminPage() {
 
   return (
     <main className="flex min-h-0 flex-1 justify-center overflow-y-auto bg-background px-4 py-8">
-      <UsersPanel />
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
+        <div className="flex justify-end"><a className="rounded-md border px-3 py-2 text-sm hover:bg-muted" href="/admin/diagnostics">Secure Application Diagnostics</a></div>
+        <UsersPanel />
+      </div>
     </main>
   )
 }

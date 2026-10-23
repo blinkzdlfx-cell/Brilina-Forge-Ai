@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { requireUser } from "@/lib/auth/require-user"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getRuntimeEnv } from "@/lib/runtime-env"
+import { recordSecureDiagnostic } from "@/lib/secure-diagnostic"
 
 const MAX_RECORDING_MS = 15 * 60 * 1000
 const SESSION_RETENTION_MS = 20 * 60 * 1000
@@ -15,6 +16,7 @@ function error(message: string, status: number) {
 export async function POST(request: Request) {
   const context = await requireUser()
   if (!context.ok) return context.response
+  const requestId = crypto.randomUUID()
 
   if (getRuntimeEnv("VOICE_TRANSCRIPTION_ENABLED") !== "true") {
     return error("Voice transcription is temporarily disabled.", 503)
@@ -43,7 +45,11 @@ export async function POST(request: Request) {
         .select("id, started_at")
         .single()
 
-      if (insertError || !data) return error("Could not start a secure recording session.", 503)
+      if (insertError || !data) {
+        await recordSecureDiagnostic({ event: "recording_session_start_failed", route: "/api/transcribe/session", userId: context.user.id, requestId, statusCode: 503, details: { stage: "insert_session", databaseErrorCode: insertError?.code ?? null, returnedData: Boolean(data) } })
+        return error("Could not start a secure recording session.", 503)
+      }
+      await recordSecureDiagnostic({ event: "recording_session_started", level: "info", route: "/api/transcribe/session", userId: context.user.id, requestId, statusCode: 200 })
       return NextResponse.json({ sessionId: data.id })
     }
 
@@ -63,8 +69,15 @@ export async function POST(request: Request) {
         .select("id")
         .maybeSingle()
 
-      if (updateError) return error("Could not finalize the recording session.", 503)
-      if (!data) return error("The recording exceeded the 15-minute limit. Record a shorter message.", 413)
+      if (updateError) {
+        await recordSecureDiagnostic({ event: "recording_session_finish_failed", route: "/api/transcribe/session", userId: context.user.id, requestId, statusCode: 503, details: { stage: "finish_update", databaseErrorCode: updateError.code ?? null } })
+        return error("Could not finalize the recording session.", 503)
+      }
+      if (!data) {
+        await recordSecureDiagnostic({ event: "recording_session_finish_rejected", level: "warning", route: "/api/transcribe/session", userId: context.user.id, requestId, statusCode: 413, details: { stage: "finish_update", reason: "missing_or_too_old_session" } })
+        return error("The recording exceeded the 15-minute limit. Record a shorter message.", 413)
+      }
+      await recordSecureDiagnostic({ event: "recording_session_finished", level: "info", route: "/api/transcribe/session", userId: context.user.id, requestId, statusCode: 200 })
       return NextResponse.json({ success: true })
     }
 
@@ -80,6 +93,7 @@ export async function POST(request: Request) {
 
     return error("Unsupported recording-session action.", 400)
   } catch {
+    await recordSecureDiagnostic({ event: "recording_session_service_unavailable", route: "/api/transcribe/session", userId: context.user.id, requestId, statusCode: 503, details: { stage: "session_handler", reason: "exception" } })
     return error("Recording sessions are not configured. Apply the Supabase migrations first.", 503)
   }
 }

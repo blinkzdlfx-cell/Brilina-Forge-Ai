@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { requireUser } from "@/lib/auth/require-user"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getRuntimeEnv } from "@/lib/runtime-env"
+import { recordSecureDiagnostic } from "@/lib/secure-diagnostic"
 
 const MAX_AUDIO_BYTES = 20 * 1024 * 1024
 const MAX_REQUEST_BYTES = MAX_AUDIO_BYTES + 1024
@@ -49,6 +50,7 @@ function toBase64(bytes: Uint8Array) {
 export async function POST(request: Request) {
   const context = await requireUser()
   if (!context.ok) return context.response
+  const requestId = crypto.randomUUID()
 
   if (getRuntimeEnv("VOICE_TRANSCRIPTION_ENABLED") !== "true") {
     return jsonError("Voice transcription is temporarily disabled.", 503)
@@ -78,7 +80,10 @@ export async function POST(request: Request) {
       .eq("user_id", context.user.id)
       .maybeSingle()
 
-    if (sessionError || !data) return jsonError("Recording session expired. Start a new recording.", 410)
+    if (sessionError || !data) {
+      await recordSecureDiagnostic({ event: "transcription_session_lookup_failed", level: "warning", route: "/api/transcribe", userId: context.user.id, requestId, statusCode: 410, details: { stage: "session_lookup", databaseErrorCode: sessionError?.code ?? null, foundSession: Boolean(data) } })
+      return jsonError("Recording session expired. Start a new recording.", 410)
+    }
     session = data as typeof session
   } catch {
     return jsonError("Recording sessions are not configured. Apply the Supabase migrations first.", 503)
@@ -146,6 +151,7 @@ export async function POST(request: Request) {
   }
 
   if (!ai) {
+    await recordSecureDiagnostic({ event: "transcription_binding_missing", route: "/api/transcribe", userId: context.user.id, requestId, statusCode: 503, details: { stage: "workers_ai_binding" } })
     return jsonError("Workers AI is not available in this runtime. Check the Cloudflare AI binding.", 503)
   }
 
@@ -165,7 +171,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ text: result.text.trim() })
   } catch (error) {
     const message = error instanceof Error ? error.message : ""
-    if (/429|quota|rate.?limit/i.test(message)) {
+    const rateLimited = /429|quota|rate.?limit/i.test(message)
+    await recordSecureDiagnostic({ event: "transcription_provider_failed", route: "/api/transcribe", userId: context.user.id, requestId, statusCode: rateLimited ? 429 : 502, details: { stage: "workers_ai_run", errorClass: error instanceof Error ? error.name.slice(0, 60) : "unknown" } })
+    if (rateLimited) {
       return jsonError("The transcription service is busy or its quota is exhausted. Try again later.", 429)
     }
     return jsonError("Transcription failed. Try a shorter recording and try again.", 502)
