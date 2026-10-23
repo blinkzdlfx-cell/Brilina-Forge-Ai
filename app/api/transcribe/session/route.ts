@@ -19,6 +19,7 @@ export async function POST(request: Request) {
   const requestId = crypto.randomUUID()
 
   if (getRuntimeEnv("VOICE_TRANSCRIPTION_ENABLED") !== "true") {
+    await recordSecureDiagnostic({ event: "recording_session_start_failed", route: "/api/transcribe/session", userId: context.user.id, requestId, statusCode: 503, details: { stage: "configuration", reason: "voice_transcription_disabled", configurationPresent: false } })
     return error("Voice transcription is temporarily disabled.", 503)
   }
 
@@ -34,7 +35,10 @@ export async function POST(request: Request) {
     if (body.action === "start") {
       const now = Date.now()
       // Opportunistically remove expired sessions; no audio is stored in this table.
-      await admin.from("voice_recording_sessions").delete().lt("expires_at", new Date(now).toISOString())
+      const { error: cleanupError } = await admin.from("voice_recording_sessions").delete().lt("expires_at", new Date(now).toISOString())
+      if (cleanupError) {
+        await recordSecureDiagnostic({ event: "recording_session_expired_cleanup_failed", level: "warning", route: "/api/transcribe/session", userId: context.user.id, requestId, statusCode: 503, details: { stage: "expired_session_cleanup", databaseErrorCode: cleanupError.code ?? null } })
+      }
       const { data, error: insertError } = await admin
         .from("voice_recording_sessions")
         .insert({
@@ -87,13 +91,16 @@ export async function POST(request: Request) {
         .delete()
         .eq("id", sessionId)
         .eq("user_id", context.user.id)
-      if (deleteError) return error("Could not cancel the recording session.", 503)
+      if (deleteError) {
+        await recordSecureDiagnostic({ event: "recording_session_cancel_failed", route: "/api/transcribe/session", userId: context.user.id, requestId, statusCode: 503, details: { stage: "cancel_delete", databaseErrorCode: deleteError.code ?? null } })
+        return error("Could not cancel the recording session.", 503)
+      }
       return NextResponse.json({ success: true })
     }
 
     return error("Unsupported recording-session action.", 400)
-  } catch {
-    await recordSecureDiagnostic({ event: "recording_session_service_unavailable", route: "/api/transcribe/session", userId: context.user.id, requestId, statusCode: 503, details: { stage: "session_handler", reason: "exception" } })
+  } catch (caught) {
+    await recordSecureDiagnostic({ event: "recording_session_service_unavailable", route: "/api/transcribe/session", userId: context.user.id, requestId, statusCode: 503, details: { stage: "session_handler", reason: caught instanceof Error ? caught.name : "unknown_exception" } })
     return error("Recording sessions are not configured. Apply the Supabase migrations first.", 503)
   }
 }
