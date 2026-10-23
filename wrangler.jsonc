@@ -9,7 +9,9 @@
   },
   "vars": {
     "CLOUDFLARE_ACCOUNT_ID": "8b694686fda6c12625423d5055aa84b1",
-    "VOICE_TRANSCRIPTION_ENABLED": "true"
+    "NEXT_PUBLIC_SUPABASE_URL": "https://jjocynbtuafdokkjemym.supabase.co",
+    "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_cokF4XhXJEdplH64SvRxLA_WB8RKxcF",
+    "VOICE_TRANSCRIPTION_ENABLED": "false"
   },
   "assets": {
     "directory": ".open-next/assets",
