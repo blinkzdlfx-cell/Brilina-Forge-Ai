@@ -36,7 +36,7 @@ function safeDetails(input: Record<string, DiagnosticScalar> = {}) {
   return output
 }
 
-/** Best-effort structured diagnostics. Never store prompts, transcripts, audio, credentials, emails, IPs, or raw provider errors. */
+/** Best-effort structured diagnostics. Never pass prompts, transcripts, audio, credentials, emails, IPs, or raw provider errors. */
 export async function recordSecureDiagnostic(input: SecureDiagnosticInput) {
   const entry = {
     event_name: /^[a-zA-Z0-9_.:-]{1,80}$/.test(input.event) ? input.event : "diagnostic_event_invalid",
