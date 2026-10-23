@@ -14,6 +14,8 @@ export function AdminMfaPanel() {
   const [factorId, setFactorId] = React.useState("")
   const [qrCode, setQrCode] = React.useState("")
   const [secret, setSecret] = React.useState("")
+  const [secretCopied, setSecretCopied] = React.useState(false)
+  const [copyError, setCopyError] = React.useState("")
   const [code, setCode] = React.useState("")
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState("")
@@ -74,6 +76,17 @@ export function AdminMfaPanel() {
     }
   }
 
+  async function copySecret() {
+    setCopyError("")
+    try {
+      await navigator.clipboard.writeText(secret)
+      setSecretCopied(true)
+      window.setTimeout(() => setSecretCopied(false), 2500)
+    } catch {
+      setCopyError("Copy was blocked by your browser. Press and hold the setup key below, then choose Copy.")
+    }
+  }
+
   async function verify(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const supabase = supabaseRef.current
@@ -117,14 +130,22 @@ export function AdminMfaPanel() {
         </button>
       )}
       {qrCode && (
-        <div className="space-y-3 rounded-xl border border-border p-4">
-          <p className="text-sm">Scan this QR code with your authenticator app, then enter the generated code below.</p>
-          {/* Supabase returns a data URI for the QR code; it is not persisted. */}
-          <Image src={qrCode} alt="Authenticator setup QR code" width={192} height={192} unoptimized className="mx-auto size-48 rounded-lg bg-white p-2" />
-          <details>
-            <summary className="cursor-pointer text-sm text-muted-foreground">Can&apos;t scan the QR code?</summary>
-            <code className="mt-2 block break-all text-xs">{secret}</code>
-          </details>
+        <div className="space-y-4 rounded-xl border border-border p-4">
+          <p className="text-sm font-medium">Choose how to add Brilina Forge AI to your authenticator</p>
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">Option 1: Scan this QR code with an authenticator app on another device.</p>
+            {/* Supabase returns a data URI for the QR code; it is not persisted. */}
+            <Image src={qrCode} alt="Authenticator setup QR code" width={192} height={192} unoptimized className="mx-auto size-48 rounded-lg bg-white p-2" />
+          </div>
+          <div className="space-y-2 border-t border-border pt-4">
+            <p className="text-sm font-medium">Option 2: Set it up manually on this phone</p>
+            <p className="text-sm text-muted-foreground">Copy this setup key, switch to your authenticator app, choose to add an account using a setup key, and paste it. If copying is unavailable, press and hold the key to copy it.</p>
+            <code className="block select-all break-all rounded-lg bg-muted p-3 text-sm leading-relaxed">{secret}</code>
+            <button type="button" onClick={() => void copySecret()} className="h-10 w-full rounded-xl border border-border px-4 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              {secretCopied ? "Setup key copied" : "Copy setup key"}
+            </button>
+            {copyError && <p role="alert" className="text-xs text-destructive">{copyError}</p>}
+          </div>
         </div>
       )}
       {(mode === "challenge" || Boolean(qrCode)) && (
