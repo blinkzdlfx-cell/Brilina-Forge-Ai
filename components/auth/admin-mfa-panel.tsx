@@ -58,8 +58,31 @@ export function AdminMfaPanel() {
     setBusy(true)
     setError("")
     try {
-      const { error: listError } = await supabase.auth.mfa.listFactors()
+      const { data: factors, error: listError } = await supabase.auth.mfa.listFactors()
       if (listError) throw listError
+
+      // A previous enrollment attempt may have left an unverified factor behind.
+      // Supabase rejects another factor with the same friendly name, so remove
+      // only our own incomplete factor before starting a fresh enrollment.
+      const verified = factors.totp.find((factor) => factor.status === "verified")
+      if (verified) {
+        setFactorId(verified.id)
+        setMode("challenge")
+        setQrCode("")
+        setSecret("")
+        return
+      }
+
+      const staleFactors = factors.totp.filter(
+        (factor) =>
+          factor.status !== "verified" &&
+          factor.friendly_name === "Brilina Forge AI owner",
+      )
+      for (const factor of staleFactors) {
+        const { error: cleanupError } = await supabase.auth.mfa.unenroll({ factorId: factor.id })
+        if (cleanupError) throw cleanupError
+      }
+
       const { data, error: enrollError } = await supabase.auth.mfa.enroll({
         factorType: "totp",
         friendlyName: "Brilina Forge AI owner",
