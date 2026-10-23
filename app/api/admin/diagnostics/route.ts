@@ -36,3 +36,15 @@ export async function PATCH(request: Request) {
   if (error) return NextResponse.json({ error: "Could not update this diagnostic event." }, { status: 503 })
   return NextResponse.json({ success: true })
 }
+
+export async function DELETE(request: Request) {
+  const context = await requireOwnerAdmin()
+  if (!context.ok) return context.response
+  if (request.headers.get("x-confirm-clear-diagnostics") !== "CLEAR-APPLICATION-DIAGNOSTICS") {
+    return NextResponse.json({ error: "Explicit confirmation is required to clear application diagnostic records." }, { status: 400 })
+  }
+  const admin = createAdminClient()
+  const { error } = await admin.from("secure_application_diagnostics").delete().gte("id", 0)
+  if (error) return NextResponse.json({ error: "Could not clear application diagnostic records." }, { status: 503 })
+  return NextResponse.json({ success: true })
+}
