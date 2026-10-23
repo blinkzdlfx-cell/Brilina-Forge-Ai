@@ -11,7 +11,8 @@ import {
 } from "@/components/ui/input-group"
 
 const MAX_RECORDING_BYTES = 20 * 1024 * 1024
-const MAX_RECORDING_MS = 3 * 60 * 1000
+const MAX_RECORDING_MS = 15 * 60 * 1000
+const AUTO_STOP_MARGIN_MS = 1000
 const TRANSCRIPTION_TIMEOUT_MS = 45_000
 const MAX_IMAGE_COUNT = 3
 const MAX_IMAGE_FILE_BYTES = 1024 * 1024
@@ -80,6 +81,7 @@ export function PromptForm({
   const [waveformLevel, setWaveformLevel] = React.useState(0)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const recorderRef = React.useRef<MediaRecorder | null>(null)
+  const recordingSessionRef = React.useRef<string | null>(null)
   const streamRef = React.useRef<MediaStream | null>(null)
   const chunksRef = React.useRef<Blob[]>([])
   const audioBlobRef = React.useRef<Blob | null>(null)
@@ -174,9 +176,12 @@ export function PromptForm({
     timeoutRef.current = setTimeout(() => controller.abort("timeout"), TRANSCRIPTION_TIMEOUT_MS)
 
     try {
+      const sessionId = recordingSessionRef.current
+      if (!sessionId) throw new Error("Recording session expired. Record a new message.")
       const response = await fetch("/api/transcribe", {
         method: "POST",
         headers: {
+          "X-Recording-Session": sessionId,
           "Content-Type": blob.type || "application/octet-stream",
           "X-Audio-Filename": `recording.${getAudioExtension(blob.type || "audio/webm")}`,
         },
@@ -196,6 +201,7 @@ export function PromptForm({
 
       const transcript = result.text.trim()
       audioBlobRef.current = null
+      recordingSessionRef.current = null
       setHasAudio(false)
       setVoiceState("idle")
       if (intent === "send") {
@@ -238,6 +244,8 @@ export function PromptForm({
 
   async function startRecording() {
     if (isBusy || voiceState === "transcribing" || voiceState === "recording") return
+    intentRef.current = "insert"
+    recordingSessionRef.current = null
     setVoiceError("")
     cancelledRef.current = false
     if (
@@ -260,6 +268,18 @@ export function PromptForm({
       })
       streamRef.current = stream
       chunksRef.current = []
+      const sessionResponse = await fetch("/api/transcribe/session", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "start" }),
+      })
+      const sessionResult = await sessionResponse.json().catch(() => null) as
+        | { sessionId?: unknown; error?: unknown }
+        | null
+      if (!sessionResponse.ok || typeof sessionResult?.sessionId !== "string") {
+        throw new Error(typeof sessionResult?.error === "string" ? sessionResult.error : "Could not start a secure recording session.")
+      }
+      recordingSessionRef.current = sessionResult.sessionId
       const mimeType = getRecordingMimeType()
       const recorder = new MediaRecorder(
         stream,
@@ -285,29 +305,66 @@ export function PromptForm({
         if (cancelledRef.current) return
         audioBlobRef.current = audioBlob
         setHasAudio(true)
-        void transcribeRecording(audioBlob, intentRef.current)
+        const sessionId = recordingSessionRef.current
+        if (!sessionId) {
+          setVoiceState("failed")
+          setVoiceError("Recording session expired. Record a new message.")
+          return
+        }
+        void (async () => {
+          try {
+            const finishResponse = await fetch("/api/transcribe/session", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ action: "finish", sessionId }),
+            })
+            const finishResult = await finishResponse.json().catch(() => null) as
+              | { error?: unknown }
+              | null
+            if (!finishResponse.ok) {
+              throw new Error(typeof finishResult?.error === "string" ? finishResult.error : "The recording exceeded the allowed duration.")
+            }
+            await transcribeRecording(audioBlob, intentRef.current)
+          } catch (error) {
+            setVoiceState("failed")
+            setVoiceError(error instanceof Error ? error.message : "Could not finalize the recording.")
+          }
+        })()
       }
       recorder.start(1000)
       setVoiceState("recording")
       startWaveform(stream)
       const startedAt = Date.now()
+      // Stop slightly before the server deadline so finalization reaches the
+      // server within the 15-minute window. No timer is rendered in the UI.
       recordingTimerRef.current = setInterval(() => {
         const elapsed = Date.now() - startedAt
-        if (elapsed >= MAX_RECORDING_MS) finalizeRecording(intentRef.current)
-      }, 250)
+        if (elapsed >= MAX_RECORDING_MS - AUTO_STOP_MARGIN_MS) finalizeRecording("insert")
+      }, 100)
     } catch (error) {
       stopMicrophone()
       setVoiceState("idle")
       setVoiceError(
         error instanceof Error && error.name === "NotAllowedError"
           ? "Microphone access was denied. Allow microphone access in your browser and try again."
-          : "Could not start the microphone. Check your browser permissions and try again."
+          : error instanceof Error && /recording session|transcription is temporarily disabled|authentication/i.test(error.message)
+            ? error.message
+            : "Could not start the microphone. Check your browser permissions and try again."
       )
     }
   }
 
   function cancelVoice() {
     cancelledRef.current = true
+    const sessionId = recordingSessionRef.current
+    if (sessionId) {
+      void fetch("/api/transcribe/session", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "cancel", sessionId }),
+      }).catch(() => undefined)
+    }
+    recordingSessionRef.current = null
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
     timeoutRef.current = null
     abortRef.current?.abort()

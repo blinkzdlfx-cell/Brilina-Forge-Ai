@@ -156,3 +156,39 @@ test("reports cancellation without exposing provider errors", async () => {
   assert.match(result.error, /cancelled/)
   assert.equal(result.results.length, 0)
 })
+
+
+test("caps combined excerpt content at 4000 characters and marks the result partial", async () => {
+  const result = await searchTavily("aggregate excerpt budget", {
+    apiKey: "test-key",
+    fetchImpl: async () => Response.json({
+      results: Array.from({ length: 5 }, (_, index) => ({
+        title: `Page ${index}`,
+        url: `https://example.com/aggregate-${index}`,
+        content: "x".repeat(1200),
+      })),
+    }),
+  })
+
+  assert.equal(result.results.length, 5)
+  assert.equal(result.results.reduce((total, item) => total + item.content.length, 0), 4000)
+  assert.deepEqual(result.results.map((item) => item.content.length), [1200, 1200, 1200, 400, 0])
+  assert.equal(result.partial, true)
+  assert.match(result.error, /truncated or omitted/)
+})
+
+test("marks results partial when an individual excerpt exceeds the per-result cap", async () => {
+  const result = await searchTavily("individual excerpt budget", {
+    apiKey: "test-key",
+    fetchImpl: async () => Response.json({
+      results: [{
+        title: "Long page",
+        url: "https://example.com/long",
+        content: "x".repeat(1201),
+      }],
+    }),
+  })
+
+  assert.equal(result.results[0].content.length, 1200)
+  assert.equal(result.partial, true)
+})
