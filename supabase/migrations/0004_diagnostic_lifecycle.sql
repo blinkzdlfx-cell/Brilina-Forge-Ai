@@ -13,6 +13,7 @@ create index if not exists secure_application_diagnostics_unread_created_idx
 
 alter table public.secure_application_diagnostics enable row level security;
 revoke all on table public.secure_application_diagnostics from anon, authenticated;
+grant select, insert, update, delete on table public.secure_application_diagnostics to service_role;
 drop policy if exists "owner can read diagnostics" on public.secure_application_diagnostics;
 drop policy if exists "authenticated can read diagnostics" on public.secure_application_diagnostics;
 
