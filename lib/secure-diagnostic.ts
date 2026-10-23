@@ -7,6 +7,7 @@ type DiagnosticScalar = string | number | boolean | null | undefined
 
 type SecureDiagnosticInput = {
   event: string
+  category?: string
   route: string
   level?: DiagnosticLevel
   userId?: string | null
@@ -40,6 +41,7 @@ function safeDetails(input: Record<string, DiagnosticScalar> = {}) {
 export async function recordSecureDiagnostic(input: SecureDiagnosticInput) {
   const entry = {
     event_name: /^[a-zA-Z0-9_.:-]{1,80}$/.test(input.event) ? input.event : "diagnostic_event_invalid",
+    category: input.category && /^[a-zA-Z0-9_.:-]{1,40}$/.test(input.category) ? input.category : input.route.includes("transcribe") ? "voice" : input.route.includes("chat") ? "chat" : input.route.includes("auth") ? "authentication" : "application",
     route: /^\/[a-zA-Z0-9_./-]{1,119}$/.test(input.route) ? input.route : "/unknown",
     level: input.level ?? "error",
     user_id: input.userId ?? null,
