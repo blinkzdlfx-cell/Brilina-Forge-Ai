@@ -14,3 +14,7 @@ Root cause is NOT YET CONFIRMED. Do not assume the session table or Supabase ins
 
 ## Follow-up
 Reproduce after deploying secure diagnostics, then open /admin/diagnostics as the owner with verified MFA. Inspect the newest event and compare its timestamp/request ID with Cloudflare Worker observability logs if necessary.
+
+
+## Diagnostic implementation follow-up (2026-10-23)
+The recording-session endpoint now emits additional redacted diagnostic events for disabled configuration, expired-session cleanup failure, cancellation failure, and handler exceptions. The transcription endpoint now records session lookup exceptions, retry-reservation failures, empty provider results, and post-transcription cleanup failures. These changes are on the diagnostic work branch and are not yet confirmed deployed.

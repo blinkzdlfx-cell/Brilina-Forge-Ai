@@ -53,6 +53,7 @@ export async function POST(request: Request) {
   const requestId = crypto.randomUUID()
 
   if (getRuntimeEnv("VOICE_TRANSCRIPTION_ENABLED") !== "true") {
+    await recordSecureDiagnostic({ event: "transcription_request_rejected", route: "/api/transcribe", userId: context.user.id, requestId, statusCode: 503, details: { stage: "configuration", reason: "voice_transcription_disabled", configurationPresent: false } })
     return jsonError("Voice transcription is temporarily disabled.", 503)
   }
 
@@ -85,7 +86,8 @@ export async function POST(request: Request) {
       return jsonError("Recording session expired. Start a new recording.", 410)
     }
     session = data as typeof session
-  } catch {
+  } catch (caught) {
+    await recordSecureDiagnostic({ event: "transcription_session_lookup_unavailable", route: "/api/transcribe", userId: context.user.id, requestId, statusCode: 503, details: { stage: "session_lookup", errorClass: caught instanceof Error ? caught.name : "unknown" } })
     return jsonError("Recording sessions are not configured. Apply the Supabase migrations first.", 503)
   }
 
@@ -115,7 +117,10 @@ export async function POST(request: Request) {
     .eq("attempt_count", session.attempt_count)
     .select("id")
     .maybeSingle()
-  if (attemptError || !attempt) return jsonError("This recording is already being processed. Try again shortly.", 409)
+  if (attemptError || !attempt) {
+    await recordSecureDiagnostic({ event: "transcription_attempt_reservation_failed", level: "warning", route: "/api/transcribe", userId: context.user.id, requestId, statusCode: 409, details: { stage: "attempt_reservation", databaseErrorCode: attemptError?.code ?? null, returnedData: Boolean(attempt) } })
+    return jsonError("This recording is already being processed. Try again shortly.", 409)
+  }
 
   const contentLength = Number(request.headers.get("content-length") ?? 0)
   if (contentLength > MAX_REQUEST_BYTES) {
@@ -164,10 +169,14 @@ export async function POST(request: Request) {
     })
 
     if (typeof result.text !== "string") {
+      await recordSecureDiagnostic({ event: "transcription_provider_empty_result", route: "/api/transcribe", userId: context.user.id, requestId, statusCode: 502, details: { stage: "workers_ai_result", provider: "workers_ai_whisper" } })
       return jsonError("The transcription service returned no transcript.", 502)
     }
 
-    await admin.from("voice_recording_sessions").delete().eq("id", session.id).eq("user_id", context.user.id)
+    const { error: cleanupError } = await admin.from("voice_recording_sessions").delete().eq("id", session.id).eq("user_id", context.user.id)
+    if (cleanupError) {
+      await recordSecureDiagnostic({ event: "transcription_session_cleanup_failed", level: "warning", route: "/api/transcribe", userId: context.user.id, requestId, statusCode: 200, details: { stage: "session_cleanup", databaseErrorCode: cleanupError.code ?? null } })
+    }
     return NextResponse.json({ text: result.text.trim() })
   } catch (error) {
     const message = error instanceof Error ? error.message : ""
