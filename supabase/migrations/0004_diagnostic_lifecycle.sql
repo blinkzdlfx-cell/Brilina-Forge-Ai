@@ -3,6 +3,7 @@
 begin;
 
 alter table public.secure_application_diagnostics
+  add column if not exists category text not null default 'application' check (char_length(category) between 1 and 40),
   add column if not exists is_read boolean not null default false,
   add column if not exists read_at timestamptz null,
   add column if not exists resolved_at timestamptz null;
