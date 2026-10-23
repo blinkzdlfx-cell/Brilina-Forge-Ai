@@ -3,7 +3,7 @@
 import * as React from "react"
 
 type Diagnostic = {
-  id: number; created_at: string; event_name: string; route: string
+  id: number; created_at: string; category: string; event_name: string; route: string
   level: "info" | "warning" | "error"; request_id: string
   status_code: number | null; details: Record<string, string | number | boolean | null>
   is_read: boolean; read_at: string | null; resolved_at: string | null
@@ -55,11 +55,11 @@ export function DiagnosticsPanel() {
       {loading && rows.length === 0 ? <p className="p-4 text-sm text-muted-foreground">Loading diagnostics…</p> : null}
       {!loading && !error && visible.length === 0 ? <p className="p-4 text-sm text-muted-foreground">{rows.length === 0 ? "No diagnostic events recorded yet. New failures will appear as unread events." : "No events match this filter."}</p> : null}
       <div className="overflow-x-auto"><table className="w-full min-w-[1040px] text-left text-sm">
-        <thead className="bg-muted/50 text-muted-foreground"><tr><th className="px-4 py-3 font-medium">Time (UTC)</th><th className="px-4 py-3 font-medium">State</th><th className="px-4 py-3 font-medium">Level</th><th className="px-4 py-3 font-medium">Event / request ID</th><th className="px-4 py-3 font-medium">Route</th><th className="px-4 py-3 font-medium">Status</th><th className="px-4 py-3 font-medium">Details / actions</th></tr></thead>
+        <thead className="bg-muted/50 text-muted-foreground"><tr><th className="px-4 py-3 font-medium">Time (UTC)</th><th className="px-4 py-3 font-medium">State</th><th className="px-4 py-3 font-medium">Level</th><th className="px-4 py-3 font-medium">Category</th><th className="px-4 py-3 font-medium">Event / request ID</th><th className="px-4 py-3 font-medium">Route</th><th className="px-4 py-3 font-medium">Status</th><th className="px-4 py-3 font-medium">Details / actions</th></tr></thead>
         <tbody>{visible.map(row => <tr key={row.id} className="border-t align-top">
           <td className="whitespace-nowrap px-4 py-3">{new Date(row.created_at).toLocaleString(undefined, { timeZone: "UTC" })}</td>
           <td className="px-4 py-3"><div>{row.is_read ? "Read" : "NEW"}</div><div className="text-xs text-muted-foreground">{row.resolved_at ? "Resolved" : "Open"}</div></td>
-          <td className="px-4 py-3"><span className={row.level === "error" ? "font-medium text-destructive" : row.level === "warning" ? "font-medium text-amber-600" : "text-muted-foreground"}>{row.level}</span></td>
+          <td className="px-4 py-3"><span className={row.level === "error" ? "font-medium text-destructive" : row.level === "warning" ? "font-medium text-amber-600" : "text-muted-foreground"}>{row.level}</span></td><td className="px-4 py-3">{row.category}</td>
           <td className="px-4 py-3 font-mono text-xs">{row.event_name}<div className="mt-1 text-muted-foreground">{row.request_id}</div></td><td className="px-4 py-3 font-mono text-xs">{row.route}</td><td className="px-4 py-3">{row.status_code ?? "—"}</td>
           <td className="max-w-[360px] whitespace-normal break-words px-4 py-3"><div className="mb-2 font-mono text-xs">{JSON.stringify(row.details)}</div><div className="flex flex-wrap gap-2">
             <button type="button" disabled={busy} onClick={() => void mutate(row.id, row.is_read ? "unread" : "read")} className="rounded border px-2 py-1 text-xs disabled:opacity-50">{row.is_read ? "Mark unread" : "Mark read"}</button>
