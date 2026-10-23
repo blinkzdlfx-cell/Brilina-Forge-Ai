@@ -17,6 +17,8 @@ test("secure diagnostics persist redacted server-side events and restrict reads 
   assert.match(logger, /createAdminClient/)
   assert.match(logger, /Never pass prompts, transcripts, audio/)
   assert.match(logger, /forge-secure-diagnostic/)
+  assert.match(logger, /category:/)
+  assert.match(api, /category, event_name/)
   assert.match(api, /requireOwnerAdmin/)
   assert.match(api, /limit\(100\)/)
   assert.match(api, /requireOwnerAdmin/)
