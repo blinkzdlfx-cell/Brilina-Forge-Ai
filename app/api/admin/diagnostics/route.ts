@@ -9,7 +9,7 @@ export async function GET() {
   try {
     const admin = createAdminClient()
     const { data, error } = await admin.from("secure_application_diagnostics")
-      .select("id, created_at, event_name, route, level, request_id, status_code, details, is_read, read_at, resolved_at")
+      .select("id, created_at, category, event_name, route, level, request_id, status_code, details, is_read, read_at, resolved_at")
       .order("created_at", { ascending: false }).limit(100)
     if (error) {
       console.error("[forge-secure-diagnostic] admin_read_failed", JSON.stringify({ code: /^[A-Z0-9]{1,12}$/.test(error.code ?? "") ? error.code : "unknown" }))
