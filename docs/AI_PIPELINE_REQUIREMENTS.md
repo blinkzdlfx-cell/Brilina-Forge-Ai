@@ -1,8 +1,8 @@
 # AI Pipeline Requirements
 
 **Repository:** `blinkzdlfx-cell/Brilina-Forge-Ai`  
-**Baseline:** `main` at `3609467a88839152f4a95ec31be71693920d5578`  
-**Status:** Recovered requirements; adapted to this repository's Next.js + AI SDK + OpenNext Cloudflare Worker architecture. This document is not proof of implementation.
+**Original audit baseline:** `main` at `3609467a88839152f4a95ec31be71693920d5578` (historical)  
+**Status:** Requirements reference only; not a live implementation tracker. Re-check current source and test evidence before treating a requirement as pending or complete. The current next-phase plan is [`docs/NEXT_PHASE_PLAN.md`](NEXT_PHASE_PLAN.md).
 
 ## Goal
 
