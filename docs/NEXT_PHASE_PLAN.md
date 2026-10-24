@@ -1,244 +1,147 @@
-# Brilina Forge AI — Consolidated Next-Phase Plan
+# Brilina Forge AI — Consolidated Architecture and Implementation Plan
 
-**Status:** Planning document only. No external service, queue, new migration, or workflow implementation is authorized by this document.
-**Repository:** `blinkzdlfx-cell/Brilina-Forge-Ai`
-**Current baseline reviewed:** `main` at `ee35aaef5dae79d4ab7fb695b9f3f1e133f47ea5` (2026-10-24)
-**Production target:** Cloudflare Worker `brilina-forge-ai`
-**Production URL:** `https://brilina-forge-ai.blinkzdlfx.workers.dev`
-**Supabase project:** `jjocynbtuafdokkjemym`
-**Execution rule:** Small, gated batches. Complete one coherent outcome, review evidence, and obtain approval before proceeding. Do not deploy to production without separate explicit approval.
+**Status:** Planning and audit only. This document does not authorize provisioning, secret changes, schema changes, or production deployment.  
+**Repository:** `blinkzdlfx-cell/Brilina-Forge-Ai`  
+**Application baseline reviewed:** `main` at `ee35aaef5dae79d4ab7fb695b9f3f1e133f47ea5` (2026-10-24)  
+**Current deployment:** Cloudflare Worker `brilina-forge-ai` — `https://brilina-forge-ai.blinkzdlfx.workers.dev`  
+**Supabase project:** `jjocynbtuafdokkjemym`  
+**Execution rule:** One coordinated workstream. Complete each gated phase, report evidence, and obtain approval before implementation beyond the approved scope. No production deployment without separate explicit approval.
 
-This document is the current planning source of truth for the next work: documenting the CPU/reliability investigation, deciding whether external compute is justified, and integrating the future Agent Workflow System. It does not replace the existing application implementation specification for the already-planned database, auth, conversation, and file features. Read `docs/IMPLEMENTATION_SPEC.md` for those existing stage requirements, but verify every status against current source and live environment evidence.
+This is the controlling roadmap for architecture, reliability, the existing foundation, and the future Agent Workflow System. `docs/IMPLEMENTATION_SPEC.md` remains the product requirements catalogue, but its older Cloudflare-specific runtime assumptions are subordinate to the architecture decision in this plan.
 
-## 1. Current verified repository facts
+## 1. Audit findings — Batch 1 must not be rebuilt by default
 
-Based on the repository source/configuration inspected for this plan:
+Source inspection of current `main` found:
 
-- The application is Next.js 16 + React 19 + TypeScript, AI SDK, and OpenNext on Cloudflare Workers.
-- The default text model is Cloudflare Workers AI `@cf/zai-org/glm-4.7-flash`.
-- The chat endpoint uses the AI SDK streaming path and has bounded request/context/tool handling and stage diagnostics.
-- Tavily is integrated through `tools/web_search.ts` and `lib/tavily-search.mjs`; do not replace or duplicate it without evidence.
-- Vision model configuration and image attachment support are present in the documented/current pipeline, but provider availability and live behavior must be verified before changing limits or routing.
-- Voice transcription uses the Cloudflare Workers AI Whisper binding from `app/api/transcribe/route.ts`; source currently enforces a 15-minute recording session and a 20 MiB audio request limit.
-- Supabase integration exists for authentication and secure application diagnostics. Migration files exist in `supabase/migrations/`; file presence does not prove every migration has been applied to the live project.
-- Owner-only administration and MFA/AAL2 controls must be preserved.
-- The owner has confirmed that password recovery now works after the MFA/AAL2 recovery fix. Do not redesign it without a demonstrated defect.
-- `wrangler.jsonc` enables Workers observability. This is not evidence that native Cloudflare logs are being ingested into Supabase.
-- Existing docs describe future conversation persistence, private attachment storage, document processing, and the Agent Workflow System. Their current completion state must be checked against code and live tests before execution.
-- Resend is the intended email-delivery direction. Existing setup documents still describe Brevo/Supabase custom SMTP. Treat migration to Resend as unimplemented until code/configuration and a successful live email test prove otherwise.
+- **Tavily guardrails:** `lib/tavily-search.mjs` already has a five-result cap, 1,200-character per-excerpt cap, 4,000-character aggregate excerpt cap, 128 KiB response bound, URL normalization/deduplication, bounded retry handling, and safe errors.
+- **Protected chat:** `app/api/chat/route.ts` calls `requireUser` and bounds request/context/tool work.
+- **Protected transcription:** `app/api/transcribe/route.ts` calls `requireUser`; it currently uses Cloudflare Workers AI Whisper and source-level limits of 20 MiB audio and a 15-minute recording session.
+- **Database foundation:** migrations `0001_initial_schema.sql`, `0002_voice_recording_sessions.sql`, `0003_secure_application_diagnostics.sql`, and `0004_diagnostic_lifecycle.sql` exist in the repository.
+- **Runtime coupling:** `lib/runtime-env.ts` reads Cloudflare bindings and falls back to `process.env`; the transcription route imports OpenNext/Cloudflare context directly. These are concrete migration touchpoints, not proof the whole app must be rewritten.
+- **Existing auth/security:** Supabase auth integration, owner administration, MFA/AAL2 checks, and secure diagnostic handling are present in the source/docs. The owner confirmed password recovery works after the MFA/AAL2 recovery fix; do not redesign it without a demonstrated defect.
+- **What is not verified:** repository migration files do not prove they were applied to the live Supabase project; source-level auth does not prove live account/RLS/MFA/revocation acceptance; CI does not prove live provider/browser behavior or deployment state. Conversation persistence, private file storage, document processing, and workflow status require a source-and-live-evidence audit before being classified as complete or pending.
 
-These facts are source/document observations, not a claim that production is currently deployed at this commit or that all live features have passed acceptance tests.
+**Initial conclusion:** the core code for the previous Foundation Batch 1 appears substantially present on current `main`. Do not implement it again. The next step is a gap audit: verify tests and source contracts, identify any exact missing checks, and verify live Supabase setup only through authorized read-only inspection or user-provided evidence. Report each item as **source present**, **automated test present/passing**, **live verified**, or **unknown**. Do not mark a feature complete based on one evidence category alone.
 
-## 2. Decisions already fixed unless new evidence requires review
+## 2. Architecture direction
 
-- Preserve the existing application UI and working user flows.
-- Keep Cloudflare as the primary application entry point.
-- Keep text generation on Cloudflare Workers AI unless measurement demonstrates a strong reason to change it.
-- Keep Supabase for PostgreSQL, authentication, and private storage.
-- Keep Tavily unless there is a documented technical or cost reason to replace it.
-- Keep provider secrets server-side.
-- Keep owner administration owner-only and protected by server-verified MFA/AAL2.
-- Do not add image generation.
-- Do not begin GitHub integration as part of this work.
-- Prefer low-cost, low-complexity infrastructure; do not assume free-tier capacity or lack of billing requirements.
-- Do not introduce a queue, Redis, another database, or a second orchestration framework without a demonstrated need.
-- Never infer production deployment success from passing CI.
+The user wants a complete, stable architecture that is not forced to keep CPU-heavy application work on Cloudflare because of the Workers free-tier CPU limit. Therefore, do **not** assume Cloudflare remains the primary application runtime, and do **not** jump straight to adding a second processing service beside an otherwise unchanged backend.
 
-## 3. Problem statement and evidence standard
+Evaluate two coherent target shapes before implementation:
 
-Cloudflare error 1102 / HTTP 503 has been associated with reports of CPU exhaustion. Potentially expensive paths include Tavily response processing, audio conversion/transcription preparation, image/vision preparation, and document extraction. Do not assume every failure shares the same root cause.
+1. **Google Cloud Run:** candidate for hosting the Next.js/OpenNext-compatible application runtime and/or a modular backend service, subject to adapter/runtime compatibility, streaming, session, and cost checks.
+2. **Google Cloud Functions:** candidate for discrete request/event handlers or provider tasks; verify whether it is suitable for the complete Next.js application before selecting it as the main runtime.
 
-For each failure, separate:
-- Worker CPU time, where runtime evidence exposes it.
-- Wall-clock request duration.
-- External provider latency.
-- Payload size and parsing/serialization work.
-- Memory and request-size limits.
-- Provider quota, rate-limit, and availability errors.
-- Runtime/configuration errors.
+Compare these with the existing Cloudflare deployment using current official documentation and a small compatibility proof. Evaluate: framework/runtime compatibility; streaming behavior; CPU and wall-clock limits; request/body limits; execution duration; cold starts; concurrency; background work; logs/metrics; secrets and service-to-service auth; region/latency; free-tier limits and billing/payment requirements; deployment complexity; and rollback. Do not assume that a free allowance means no billing account or payment method is required.
 
-Before moving a workload, capture a reproducible baseline or clearly state which runtime metric is unavailable. A network call being slow does not itself prove it consumed Worker CPU. Moving only the provider call will not help if the expensive work is still done in the Worker.
+**Architecture rule:** select one primary server runtime for each responsibility. Cloudflare may remain for DNS/CDN/edge routing if it adds value, but avoid duplicate API implementations and split-brain auth/orchestration. Keep Supabase for PostgreSQL/Auth/private Storage unless evidence justifies a change. Keep Tavily unless evidence supports replacement. Text-model placement is an explicit decision in this review; the existing Cloudflare Workers AI model is a current behavior, not an unchangeable hosting requirement.
 
-## 4. Proposed target architecture to validate
+## 3. Diagnose CPU/reliability with evidence
 
-### Cloudflare application layer
-Keep routing, existing session checks, authorization, request validation, lightweight orchestration, chat UI delivery, and Cloudflare Workers AI text generation on the current application where they fit actual runtime limits.
+Cloudflare error 1102 / HTTP 503 has been associated with CPU exhaustion, but do not assume all failures have one cause. Trace chat/search, transcription, vision, and document paths end-to-end. Separate:
 
-### External processing service — candidate, not yet selected
-Evaluate a small, modular external compute service for measured CPU-heavy transformations and/or provider tasks. Candidate workloads:
-- Tavily result normalization/filtering if measurements show this is expensive.
-- Audio transcription preparation or transcription if that is the bottleneck and provider economics/quality justify moving it.
-- Image/vision processing if the current route is the source of CPU failures.
-- PDF/document extraction if it needs more runtime than the Worker can safely provide.
+- actual CPU time where available;
+- total wall-clock duration and provider latency;
+- bytes read, decoded, parsed, encoded, or serialized;
+- request/response sizes and memory pressure;
+- provider quota, rate limits, timeouts, and availability;
+- runtime/configuration errors.
 
-Evaluate Google Cloud Run, Google Cloud Functions, and other genuinely suitable options using current official quotas/pricing. Prefer one small service with clear modules over separate microservices unless runtime, security, or scaling requirements justify separation.
+Use reproducible inputs and redacted correlation IDs. Never log prompts, transcripts, audio, cookies, credentials, raw provider payloads, or private file contents. If CPU telemetry is unavailable, state that limitation and use a controlled comparative test; do not infer CPU usage from a slow request alone.
 
-### Supabase
-Continue using Supabase for the existing auth/database/storage architecture. If durable workflow records are needed, inspect the actual schema and migration state first; reuse existing tables where appropriate.
+## 4. One sequential delivery plan
 
-### Queue/cache
-Use synchronous request/response when bounded and reliable. Introduce a queue only for workloads that require durable retries, long execution, or user-visible background progress. Introduce caching only when repeated work is likely and cache isolation/freshness can be enforced safely.
+### Phase A — Complete this documentation review
 
-### Agent Workflow System
-The proposed workflow module uses Cloudflare Workflows, Supabase run/run-event persistence, and Supabase Realtime. Verify current Cloudflare capabilities and existing app/schema before finalizing the design. Define a single authority for execution status and a reconciliation strategy between workflow state and database events. Realtime should notify authorized clients; a database row alone must not be treated as proof that an external step completed.
+- Update this roadmap and `docs/IMPLEMENTATION_SPEC.md` so the target runtime is an open architecture decision centered on Google Cloud Run vs Google Cloud Functions, rather than a pre-decided Cloudflare-primary design.
+- Keep the prior Foundation Batch 1 requirements, but label their implementation status as audited/partially verified, not pending by default.
+- Preserve the historical recovery notes and the existing UI/security decisions.
+- Keep the PR documentation-only.
+**Gate:** review the diff, links, and CI; do not merge automatically.
 
-## 5. Four small implementation batches after this documentation batch
+### Phase B — Foundation gap audit (no duplicate implementation)
 
-The work should remain in a small number of reviewable batches. Within a batch, use explicit gates for individual workloads rather than implementing every integration at once.
+Inspect current `main`, tests, migrations, environment readers, auth/admin APIs, voice-session checks, diagnostic handling, and current feature flags. Build an evidence table for the previous Batch 1 (Tavily bound, schema/RLS, protected auth/admin/password lifecycle/transcription) and for later stages. Check live Supabase state only through authorized, read-only evidence; never reset or reapply migrations to “make sure.”
 
-### Batch 1 — Documentation consolidation (current task)
-- Reconcile the current docs with repository source and the owner-confirmed password-recovery status.
-- Mark historical AI-pipeline recovery notes as historical rather than leaving stale “in progress” status.
-- Establish this plan as the next-phase planning source of truth.
-- Do not change application source, schema, secrets, or deployment.
-**Gate:** document links and status statements are consistent; diff contains documentation only; review the PR before merge.
+Deliver:
+- completed / source-present / test-covered / live-verified / unknown status per requirement;
+- exact gaps and the minimum tests needed to close them;
+- a list of Cloudflare-specific dependencies and portable application-level controls;
+- no code changes unless separately approved after the audit.
 
-### Batch 2 — Measurement and architecture decision
-- Trace chat/search, transcription, vision, and document paths from route to provider.
-- Identify the exact processing steps that run in the Worker and where measurable CPU/time/payload evidence exists.
-- Record a baseline for reproducible failure cases and identify unavailable metrics.
-- Compare external compute providers, free-tier constraints, billing requirements, cold starts, runtime limits, and operational complexity using current official sources.
-- Choose one first workload and decide whether it should remain synchronous or become a durable job.
-**Gate:** written decision record, data-flow diagram, security boundary, cost/risk comparison, and test plan approved before provisioning infrastructure.
+**Gate:** agree on the actual remaining work before any implementation. Do not repeat Batch 1 where source and tests already satisfy the requirement.
 
-### Batch 3 — External compute foundation and first workload
-- Provision only the approved external service after owner approval.
-- Implement a minimal authenticated service boundary with strict payload bounds, timeouts, safe errors, idempotency where needed, redacted correlation IDs, and health/smoke tests.
-- Migrate only the first selected workload behind a controlled feature/config switch or equivalent rollback path.
-- Keep existing behavior available for rollback until acceptance passes.
-- Add only the deployment/configuration scripts required for this service.
-**Gate:** automated tests and service build pass; service-to-service auth, payload limits, timeout, provider failure, and redaction tests pass; staging/preview smoke test passes; comparative evidence shows whether the targeted Worker processing was reduced. No production deployment without explicit approval.
+### Phase C — Runtime decision and migration design
 
-### Batch 4 — Remaining workloads, Agent Workflow System, and end-to-end acceptance
-- Reassess each remaining workload independently; migrate only those justified by evidence and cost.
-- Implement the Agent Workflow System after its dependencies and authority/reconciliation model are approved.
-- Integrate run/run-event persistence, user-scoped RLS, Realtime updates, duplicate-submission protection, cancellation/retry behavior, reconnect recovery, and cleanup.
-- Run full application acceptance and document remaining limitations.
-**Gate:** each migrated workload has its own test evidence; workflow state transitions and recovery are tested; all existing CI checks pass; live provider/browser checks are recorded separately; production deployment remains separately authorized.
+Compare Cloud Run, Cloud Functions, and retaining some Cloudflare responsibilities using current official quotas/pricing and the audited source. Produce one recommended architecture, a service/data-flow diagram, security boundaries, cost envelope, secrets plan, deployment/rollback plan, and an ordered migration map. Include a minimal compatibility proof for the chosen runtime (especially Next.js routing, streaming, Supabase sessions, and AI SDK behavior) before committing to a full migration.
 
-If the review finds that the external compute layer is unnecessary, Batch 3 must not provision it merely to follow this outline. A documented simpler solution is acceptable.
+Define which existing restrictions are application-level invariants and must remain: auth/owner/AAL2 checks, user isolation, request and file validation, safe errors, timeouts, quota handling, redaction, and provider-side secret protection. Adjust only limits that exist solely because of Cloudflare’s runtime. Keep the current application available for rollback until acceptance passes.
 
-## 6. External service requirements to decide, not pre-approve
+**Gate:** owner approval of the architecture and cost/payment requirements before provisioning or migrating production.
 
-Potential requirements include:
-- External HTTP endpoint or internal service API.
-- Service-to-service authentication using a high-entropy secret or stronger mechanism supported by the chosen platform.
-- Replay protection where relevant.
-- Per-route/request limits and strict input/output schemas.
-- Timeout and cancellation propagation.
-- Idempotency for retryable jobs and side effects.
-- Provider adapters that do not leak credentials.
-- Health check and deployment smoke test.
-- Redacted structured logs and correlation IDs.
-- Environment-specific configuration for local, preview, and production.
-- Secret management and rotation instructions.
-- Deployment, validation, and rollback scripts.
-- Rate limiting and quota handling.
-- Temporary payload cleanup.
-- Queue, dead-letter handling, or durable job status only if justified by long-running work.
+### Phase D — Migrate the primary runtime and the first measured bottleneck
 
-Each item must be classified as required, optional, deferred, or not needed, with a reason. Do not add a public unrestricted processing API.
+Move one coherent application/runtime responsibility at a time, not parallel duplicate implementations. Begin with the minimum viable runtime foundation, then move the first workload selected by Phase C’s evidence. Keep synchronous processing when bounded; add a queue only if work is long-running or needs durable retry/progress. Add caching only with defined freshness, invalidation, and user isolation.
 
-## 7. Cache and queue rules
+Required tests include service/auth boundaries, streaming, timeout/cancellation, payload bounds, provider failure/quota, redaction, duplicate requests, and rollback. Compare before/after evidence for the original failure case.
 
-For every proposed cache:
-- Define key, TTL, size bound, invalidation, and freshness expectations.
-- Prevent cross-user leakage. Private/user-specific content must be scoped to the authenticated user and tenant.
-- Do not cache secrets or raw sensitive payloads.
-- Do not use cache hits to bypass authorization.
+**Gate:** build/tests and preview smoke tests pass; no production deployment without explicit approval.
 
-For every proposed queue:
-- Define job ownership, lifecycle, idempotency, retry cap/backoff, cancellation, permanent failure, retention, and cleanup.
-- Preserve partial results with explicit partial status.
-- Do not retry side effects unless they are idempotent.
-- Explain whether the user waits for a response, receives background progress, or reconnects to a durable job.
-- Do not create a queue if a bounded synchronous call is adequate.
+### Phase E — Finish remaining product foundation in dependency order
 
-## 8. Agent Workflow System design requirements
+After runtime stability, complete only verified gaps in this order:
 
-Before implementation, specify:
-- Workflow start/submit contract and duplicate-submission prevention.
-- Stable run ID and event ID rules.
-- Run states: running, completed, failed, cancelled, and any justified intermediate states.
-- Which system is authoritative for execution status.
-- How Cloudflare Workflow state and Supabase records are reconciled after partial failure.
-- Which events are durable and which are notifications only.
-- User-scoped authorization and RLS for run/event reads.
-- Realtime channel authorization and reconnect/resume behavior.
-- Step retries, idempotency, cancellation, timeouts, partial completion, and cleanup.
-- External service integration and error propagation.
-- Retention and diagnostic correlation.
-- UI states for pending, running, completed, failed, cancelled, and reconnecting.
+1. Authentication/access, migration/RLS and diagnostics acceptance gaps from Phase B.
+2. Conversation/message persistence, including retry/idempotency and interrupted/failed assistant states.
+3. Private Supabase Storage and upload-first attachment references; no base64 in chat requests.
+4. External vision provider, after file ownership and provider-access controls are proven.
+5. PDF first, then TXT, then DOCX; only enable each UI action after its backend passes acceptance.
+6. Supabase keep-alive only if current plan rules and activity requirements justify it; choose the scheduler supported by the final runtime rather than assuming Cloudflare Cron.
+7. Resend migration only after inspecting current configuration and verifying a live delivery/reset flow; do not treat intent or documentation as completion.
 
-Do not implement a second workflow engine. Distinguish a normal synchronous chat request, a single asynchronous processing job, and a durable multi-step agent workflow.
+The prior Foundation Batch 1 is audited in Phase B, not restarted as a new implementation batch. Preserve existing UI and password-recovery behavior unless a reproducible defect is found.
 
-## 9. Security and diagnostics
+### Phase F — Agent Workflow System and end-to-end acceptance
 
-- Preserve server-side session verification, disabled-user checks, invite-only access, owner-only administration, and AAL2 requirements.
-- Never put provider/service credentials in browser code or logs.
-- Validate URL inputs and protect against SSRF if any service fetches arbitrary URLs.
-- Bound request bytes, result bytes, image/audio/document sizes, concurrency, runtime, and provider calls.
-- Keep user data isolated in cache, jobs, storage, database queries, and Realtime channels.
-- Reuse `recordSecureDiagnostic` and the existing diagnostic sink when appropriate; do not create one table per feature.
-- Never log prompts, transcripts, audio, passwords, cookies, authorization headers, API keys, or raw provider payloads.
-- Distinguish application diagnostic rows from native Cloudflare logs. Clearing Supabase diagnostic rows must not be described as deleting native Cloudflare logs.
-- Propagate only safe correlation IDs across service boundaries.
-- Preserve the existing owner-only/AAL2 access model for diagnostic administration.
+Implement the Agent Workflow System only after runtime, auth, persistence, and file/provider boundaries are stable. First decide whether Cloudflare Workflows remains suitable or whether the selected Google Cloud architecture provides the better durable execution mechanism. Use one workflow engine, one authoritative execution state, durable run/event records where needed, user-scoped RLS, duplicate-submit protection, idempotent retries, cancellation, reconnect recovery, cleanup, and authorized Realtime notifications if Supabase Realtime remains the chosen client update channel.
 
-## 10. Required scripts and operator steps
+Run the complete acceptance matrix across auth, RLS, chat streaming, Tavily, vision/documents, voice, persistence, uploads, quota/timeouts, diagnostics, and recovery. Record CI, live-provider/browser results, deployment state, and unverified items separately.
 
-Do not create these during planning. After the architecture is approved, decide which are needed and use existing project conventions. Candidate scripts include:
-- External service local development/start.
-- External service build and validation.
-- External service deployment.
-- Service health check.
-- Preview/staging smoke test.
-- Environment/configuration validation without printing secret values.
-- Database migration/status verification if schema changes are approved.
-- Cleanup job only if persistent temporary objects/jobs are introduced.
+## 5. Portability and security invariants
 
-Document which steps require manual cloud-dashboard configuration, which resources must be provisioned, and which secrets must be configured out of band. Do not put production secrets in the repository or scripts. Do not run production deploy scripts without explicit approval.
+Preserve these regardless of runtime:
 
-## 11. Test and acceptance matrix
+- Server-verified Supabase session and disabled-user checks on private APIs.
+- Owner-only admin access and server-verified AAL2; trusted role metadata is not client-editable.
+- Secrets remain server-side; no credentials in client bundles, logs, or responses.
+- Strict request/body/file limits, schema validation, timeouts, cancellation, provider quota handling, and safe error messages.
+- Per-user data isolation in database, storage, cache, jobs, and realtime subscriptions.
+- Private storage, ownership checks before provider access, short-lived signed URLs where needed, and no permanent public file URLs.
+- Redacted structured diagnostics and correlation IDs. Application diagnostic rows are not native Cloudflare logs; deleting one must not be described as deleting the other.
+- Preserve streaming rather than buffering a complete answer and simulating chunks.
+- No image generation or GitHub integration in this scope.
+- No new database, Redis, queue, cache, microservice, or workflow engine without a measured need and approved design.
 
-Every implementation batch must include applicable tests:
-- Unit and integration tests for provider adapters and payload bounds.
-- Tavily success, timeout, 429, 5xx, malformed/oversized response, URL normalization, and partial results.
-- Transcription/image/document provider failures, input validation, and size boundaries.
-- Service authentication and unauthorized requests.
-- Timeouts, cancellation, retries, idempotency, and permanent failures.
-- Cache key isolation and freshness, if caching is added.
-- Queue ownership/retry/recovery, if queues are added.
-- Workflow lifecycle, duplicate submissions, RLS, Realtime authorization, reconnect, reconciliation, and cleanup.
-- Diagnostic redaction and correlation.
-- Existing unit tests, lint, TypeScript checks, and Cloudflare Worker build.
-- External-service build and deployment smoke tests, if an external service is selected.
-- Manual browser/live-provider tests documented separately from CI.
+## 6. Acceptance and reporting rules
 
-A successful build does not prove the feature works in production. Record commit SHA, CI run, deployment status, manual test evidence, and unverified items.
+For each phase, record:
+- baseline and target commit SHA;
+- changed files and why;
+- automated tests, lint, typecheck, and applicable build results;
+- live tests actually performed and their evidence;
+- deployment status (separate from CI);
+- known gaps and rollback steps.
 
-## 12. Open decisions requiring owner approval
+A successful CI run is not proof of production deployment or live Supabase/provider acceptance. Do not provision services, change secrets, alter production DNS, apply live migrations, or deploy without explicit approval.
 
-1. Which external compute provider, if any, should be used after current quota/cost research?
-2. Which single workload should be migrated first based on measured evidence?
-3. Should the first workload remain synchronous, or does it need durable asynchronous processing?
-4. What is the maximum acceptable recurring cost and whether a payment method is acceptable?
-5. Which external-service environment (preview/staging) can be provisioned safely?
-6. When to implement the Agent Workflow System relative to workload migration; default is after the first external workload and its service boundary are proven.
-7. Resend migration details and whether Supabase Auth emails should use Resend SMTP or another supported delivery arrangement; do not assume it is already configured.
-8. Whether the planned public landing page/domain separation remains in the immediate scope or stays deferred.
+## 7. Documentation authority
 
-Do not ask the owner to decide technical details that can be settled by source inspection and documented evidence. Recommend defaults and present only material decisions.
+- `docs/NEXT_PHASE_PLAN.md`: controlling architecture, audit, and execution roadmap.
+- `docs/IMPLEMENTATION_SPEC.md`: product requirements and stage acceptance criteria; runtime-specific assumptions defer to this roadmap until the architecture is approved.
+- `docs/AI_PIPELINE_REQUIREMENTS.md`: reusable streaming, bounds, retries, and observability requirements.
+- `docs/AI_PIPELINE_BATCH_PLAN.md` and `docs/AI_PIPELINE_RECOVERY_STATUS.md`: historical recovery notes, not current completion trackers.
+- `docs/SECURE-APPLICATION-DIAGNOSTICS.md`: diagnostic access, retention, and native Cloudflare log limitations.
+- `docs/architecture/*`: detailed design/setup notes; verify their runtime/provider assumptions before following them.
+- `docs/REUSABLE-FOUNDATION-PLAN.md`: historical audit only; superseded provider choices are not current requirements.
 
-## 13. Documentation hierarchy
-
-- `docs/NEXT_PHASE_PLAN.md`: current plan for CPU/reliability investigation, external compute, and Agent Workflow System.
-- `docs/IMPLEMENTATION_SPEC.md`: staged requirements for existing app foundation, authentication, persistence, file handling, and related product features. Its progress statements must be verified against current source; stage descriptions are not proof of completion.
-- `docs/AI_PIPELINE_REQUIREMENTS.md`: requirements reference for streaming, bounds, provenance, retries, and observability.
-- `docs/AI_PIPELINE_BATCH_PLAN.md`: historical AI-pipeline recovery batch design; consult it for applicable tests, not as the status authority for this next phase.
-- `docs/AI_PIPELINE_RECOVERY_STATUS.md`: historical recovery notes plus a pointer to the current status source.
-- `docs/SECURE-APPLICATION-DIAGNOSTICS.md`: diagnostics behavior, access, retention, and Cloudflare-log limitations.
-- `docs/architecture/*`: detailed auth, schema, and invited-user design documents; reconcile their provider/setup instructions before following them.
-- `docs/REUSABLE-FOUNDATION-PLAN.md`: historical audit only; its Better Auth/Neon/R2 recommendations are superseded.
-
-When two documents disagree, first verify the source and approved decisions. Update the owning document instead of adding a third competing specification.
+When documents conflict, verify current source and approved decisions, then update the owning document rather than creating another competing plan.
