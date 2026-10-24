@@ -15,9 +15,19 @@ const MAX_RECORDING_MS = 10 * 60 * 1000
 const AUTO_STOP_MARGIN_MS = 1000
 const TRANSCRIPTION_TIMEOUT_MS = 45_000
 const MAX_IMAGE_COUNT = 3
+const MAX_ATTACHMENT_COUNT = 5
 const MAX_IMAGE_FILE_BYTES = 1024 * 1024
 const MAX_TOTAL_IMAGE_BYTES = 3 * 1024 * 1024
+const MAX_DOCUMENT_FILE_BYTES = 10 * 1024 * 1024
 const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"])
+const ALLOWED_DOCUMENT_TYPES = new Set(["text/plain", "text/markdown", "text/x-markdown", "text/csv", "text/html", "application/json", "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"])
+
+function normalizeAttachment(file: File) {
+  if (file.type) return file
+  const ext = file.name.toLowerCase().split(".").pop()
+  const type = ext === "md" ? "text/markdown" : ext === "txt" ? "text/plain" : ext === "csv" ? "text/csv" : ext === "html" || ext === "htm" ? "text/html" : ext === "json" ? "application/json" : ext === "pdf" ? "application/pdf" : ext === "docx" ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : ext === "png" ? "image/png" : ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "webp" ? "image/webp" : ""
+  return type ? new File([file], file.name, { type, lastModified: file.lastModified }) : file
+}
 
 type VoiceState = "idle" | "recording" | "stopped" | "transcribing" | "failed"
 type TranscriptionIntent = "insert" | "send"
@@ -70,6 +80,7 @@ export function PromptForm({
   onComposerFocus: () => void
 }) {
   const maxSelectableImages = Math.min(MAX_IMAGE_COUNT, maxImages)
+  void canAttachImages // Documents remain attachable even when the selected text model cannot accept images directly.
   const [input, setInput] = React.useState("")
   const [selectedImages, setSelectedImages] = React.useState<File[]>([])
   const [imageError, setImageError] = React.useState("")
@@ -427,25 +438,35 @@ export function PromptForm({
   }, [])
 
   function handleImageSelection(event: React.ChangeEvent<HTMLInputElement>) {
-    const incoming = Array.from(event.currentTarget.files ?? [])
+    const incoming = Array.from(event.currentTarget.files ?? []).map(normalizeAttachment)
     event.currentTarget.value = ""
     if (!incoming.length) return
 
     const combined = [...selectedImages, ...incoming]
-    if (combined.length > maxSelectableImages) {
-      setImageError(`Attach up to ${maxSelectableImages} image(s) per message.`)
+    if (combined.length > MAX_ATTACHMENT_COUNT) {
+      setImageError("Attach up to 5 files per message.")
       return
     }
-    if (combined.some((file) => !ALLOWED_IMAGE_TYPES.has(file.type))) {
-      setImageError("Use PNG, JPEG, or WebP images only.")
+    if (combined.some((file) => !ALLOWED_IMAGE_TYPES.has(file.type) && !ALLOWED_DOCUMENT_TYPES.has(file.type))) {
+      setImageError("Supported files: PNG, JPEG, WebP, TXT, MD, PDF, and DOCX.")
       return
     }
-    if (combined.some((file) => file.size > MAX_IMAGE_FILE_BYTES)) {
+    const images = combined.filter((file) => ALLOWED_IMAGE_TYPES.has(file.type))
+    const documents = combined.filter((file) => !ALLOWED_IMAGE_TYPES.has(file.type))
+    if (images.length > maxSelectableImages) {
+      setImageError(`This model supports up to ${maxSelectableImages} new image(s) in this message.`)
+      return
+    }
+    if (images.some((file) => file.size > MAX_IMAGE_FILE_BYTES)) {
       setImageError("Each image must be 1 MiB or smaller.")
       return
     }
-    if (combined.reduce((total, file) => total + file.size, 0) > MAX_TOTAL_IMAGE_BYTES) {
+    if (images.reduce((total, file) => total + file.size, 0) > MAX_TOTAL_IMAGE_BYTES) {
       setImageError("All attached images must total 3 MiB or less.")
+      return
+    }
+    if (documents.some((file) => file.size > MAX_DOCUMENT_FILE_BYTES)) {
+      setImageError("Each document must be 10 MiB or smaller.")
       return
     }
 
@@ -459,7 +480,7 @@ export function PromptForm({
   }
 
   const imagePreviews = React.useMemo(
-    () => selectedImages.map((file) => ({ file, url: URL.createObjectURL(file) })),
+    () => selectedImages.filter((file) => ALLOWED_IMAGE_TYPES.has(file.type)).map((file) => ({ file, url: URL.createObjectURL(file) })),
     [selectedImages]
   )
 
@@ -480,7 +501,7 @@ export function PromptForm({
     }
     const text = inputRef.current.trim()
     if ((!text && selectedImages.length === 0) || isBusy || voiceState === "transcribing" || voiceState === "stopped") return
-    onSubmit(text || "Please analyze the attached image(s) and describe what is important.", selectedImages)
+    onSubmit(text || "Please analyze the attached files and describe what is important.", selectedImages)
     setSelectedImages([])
     setImageError("")
     inputRef.current = ""
@@ -497,12 +518,17 @@ export function PromptForm({
 
   return (
     <form onSubmit={handleSubmit} className="w-full">
-      {imagePreviews.length > 0 && (
+      {selectedImages.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-2" aria-label="Attached images">
-          {imagePreviews.map(({ file, url }, index) => (
-            <div key={`${file.name}-${file.size}-${index}`} className="relative size-16 overflow-hidden rounded-lg border border-border bg-muted">
+          {selectedImages.map((file) => {
+            const index = selectedImages.indexOf(file)
+            const preview = imagePreviews.find((item) => item.file === file)
+            return (
+            <div key={`${file.name}-${file.size}-${index}`} className={preview ? "relative size-16 overflow-hidden rounded-lg border border-border bg-muted" : "flex max-w-56 items-center gap-2 rounded-lg border border-border bg-muted px-2 py-1 text-xs"}>
+              {preview ? <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={url} alt={file.name} className="size-full object-cover" />
+              <img src={preview.url} alt={file.name} className="size-full object-cover" />
+              </> : <span className="max-w-44 truncate">{file.name}</span>}
               <button
                 type="button"
                 aria-label={`Remove ${file.name}`}
@@ -512,7 +538,7 @@ export function PromptForm({
                 <XIcon className="size-3" />
               </button>
             </div>
-          ))}
+          )})}
         </div>
       )}
       <InputGroup>
@@ -548,12 +574,12 @@ export function PromptForm({
             </span>
           )}
           <div className="flex w-full min-w-0 items-center gap-1.5">
-            {canAttachImages && (
+            {true && (
               <>
                 <input
                   ref={imageInputRef}
                   type="file"
-                  accept="image/png,image/jpeg,image/webp"
+                  accept="image/png,image/jpeg,image/webp,.txt,.md,.csv,.json,.html,.htm,.pdf,.docx,text/plain,text/markdown,text/csv,application/json,text/html,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                   multiple
                   className="hidden"
                   onChange={handleImageSelection}
@@ -562,8 +588,8 @@ export function PromptForm({
                   type="button"
                   size="icon-sm"
                   variant="outline"
-                  aria-label="Attach images"
-                  title={`Attach images (PNG, JPEG, WebP; up to ${maxSelectableImages})`}
+                  aria-label="Attach files"
+                  title="Attach images or documents (PNG, JPEG, WebP, TXT, MD, PDF, DOCX)"
                   disabled={isBusy}
                   onClick={() => imageInputRef.current?.click()}
                 >
