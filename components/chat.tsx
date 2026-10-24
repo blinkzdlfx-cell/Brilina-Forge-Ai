@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { type ChatUIMessage as ChatMessageType } from "@/tools"
 import { useChat } from "@ai-sdk/react"
 import { lastAssistantMessageIsCompleteWithToolCalls } from "ai"
 
@@ -63,6 +64,12 @@ export function Chat({ models }: { models: GatewayModel[] }) {
   }, [])
 
   const [model, setModel] = React.useState(models[0]?.id ?? "")
+  const [conversationId, setConversationId] = React.useState<string | null>(null)
+  const [conversations, setConversations] = React.useState<Array<{ id: string; title: string; is_pinned: boolean; archived_at: string | null; updated_at: string }>>([])
+  const [showArchived, setShowArchived] = React.useState(false)
+  const [conversationNotice, setConversationNotice] = React.useState("")
+  const conversationIdRef = React.useRef<string | null>(null)
+  React.useEffect(() => { conversationIdRef.current = conversationId }, [conversationId])
   const [attachmentError, setAttachmentError] = React.useState("")
   const [collapseExpandedMessagesKey, setCollapseExpandedMessagesKey] = React.useState(0)
 
@@ -81,6 +88,22 @@ export function Chat({ models }: { models: GatewayModel[] }) {
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
   })
 
+  React.useEffect(() => {
+    let cancelled = false
+    void fetch("/api/conversations").then(async (response) => {
+      if (!response.ok) return
+      const payload = await response.json() as { conversations?: typeof conversations }
+      if (!cancelled) setConversations(payload.conversations ?? [])
+    }).catch(() => undefined)
+    return () => { cancelled = true }
+  }, [])
+  const refreshConversations = React.useCallback(async () => {
+    const [a, b] = await Promise.all([fetch("/api/conversations"), fetch("/api/conversations?archived=true")])
+    if (!a.ok) throw new Error("Conversation history could not be loaded.")
+    const active = await a.json() as { conversations?: typeof conversations }
+    const archived = b.ok ? await b.json() as { conversations?: typeof conversations } : { conversations: [] }
+    setConversations([...(active.conversations ?? []), ...(archived.conversations ?? [])])
+  }, [])
   const resolvedModel = models.some((m) => m.id === model)
     ? model
     : (models[0]?.id ?? "")
@@ -103,7 +126,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
   )
 
   const handleSendMessage = React.useCallback(
-    (text: string, files: File[] = []) => {
+    async (text: string, files: File[] = []) => {
       let requestModel = resolvedModel
       const totalImageCount = recentImageCount + files.length
       if (totalImageCount > 0) {
@@ -126,6 +149,18 @@ export function Chat({ models }: { models: GatewayModel[] }) {
       }
 
       setAttachmentError("")
+      let targetId = conversationIdRef.current
+      try {
+        if (!targetId) {
+          const created = await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: text.trim().slice(0, 64) || "New chat" }) })
+          const payload = await created.json() as { conversation?: { id: string } }
+          if (!created.ok || !payload.conversation?.id) throw new Error("Could not create a conversation. Try again.")
+          targetId = payload.conversation.id
+          conversationIdRef.current = targetId
+          setConversationId(targetId)
+          await refreshConversations()
+        }
+      } catch (cause) { setAttachmentError(cause instanceof Error ? cause.message : "Could not create a conversation."); return }
       // Keep the user's Writing model selected. Vision models are chosen internally
       // for image requests and are not exposed in the model selector.
 
@@ -137,7 +172,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
         void sendMessage({ text }, { body: { model: requestModel } })
       }
     },
-    [models, recentImageCount, resolvedModel, sendMessage]
+    [models, recentImageCount, resolvedModel, sendMessage, refreshConversations]
   )
 
   const rawErrorMessage = error?.message ?? ""
@@ -171,17 +206,66 @@ export function Chat({ models }: { models: GatewayModel[] }) {
       : undefined
 
   const startNewChat = React.useCallback(() => {
-    if (isBusy) {
-      stop()
-    }
+    if (isBusy) stop()
+    conversationIdRef.current = null
+    setConversationId(null)
     setMessages([])
+    setConversationNotice("")
+    setAttachmentError("")
   }, [isBusy, setMessages, stop])
+  const openConversation = React.useCallback(async (id: string) => {
+    if (isBusy) stop()
+    try {
+      const response = await fetch("/api/conversations/" + encodeURIComponent(id))
+      const payload = await response.json() as { messages?: ChatMessageType[] }
+      if (!response.ok || !payload.messages) throw new Error("Could not load this conversation.")
+      conversationIdRef.current = id
+      setConversationId(id)
+      setMessages(payload.messages)
+      setConversationNotice("")
+    } catch (cause) { setConversationNotice(cause instanceof Error ? cause.message : "Could not load this conversation.") }
+  }, [isBusy, setMessages, stop])
+  React.useEffect(() => {
+    if (status !== "ready" || !conversationId || messages.length === 0) return
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      void fetch("/api/conversations/" + encodeURIComponent(conversationId) + "/messages", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: messages.map((m) => ({ id: m.id, role: m.role, parts: m.parts, status: "complete" })) }), signal: controller.signal,
+      }).then(async (response) => {
+        if (!response.ok) { setConversationNotice("Conversation history could not be saved. An attachment may need secure upload first."); return }
+        await refreshConversations()
+      }).catch(() => undefined)
+    }, 300)
+    return () => { clearTimeout(timer); controller.abort() }
+  }, [status, conversationId, messages, refreshConversations])
+  const updateConversation = React.useCallback(async (id: string, patch: Record<string, unknown>) => {
+    const response = await fetch("/api/conversations/" + encodeURIComponent(id), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) })
+    if (!response.ok) throw new Error("Could not update this conversation.")
+    await refreshConversations()
+  }, [refreshConversations])
+  const deleteConversation = React.useCallback(async (id: string) => {
+    if (!window.confirm("Delete this conversation and its messages? This cannot be undone.")) return
+    const response = await fetch("/api/conversations/" + encodeURIComponent(id), { method: "DELETE" })
+    if (!response.ok) { setConversationNotice("Could not delete this conversation."); return }
+    if (conversationIdRef.current === id) startNewChat()
+    await refreshConversations()
+  }, [refreshConversations, startNewChat])
 
   return (
     <SidebarProvider defaultOpen className="h-full !min-h-0 w-full flex-1 overflow-hidden overscroll-none">
       <ChatSidebar
         hasConversation={messages.length > 0}
         conversationTitle={conversationTitle}
+        conversations={conversations}
+        activeConversationId={conversationId}
+        showArchived={showArchived}
+        onToggleArchived={() => setShowArchived((v) => !v)}
+        onSelectConversation={(id) => void openConversation(id)}
+        onPinConversation={(item) => void updateConversation(item.id, { is_pinned: !item.is_pinned }).catch((e) => setConversationNotice(e.message))}
+        onArchiveConversation={(item) => void updateConversation(item.id, { archived: !item.archived_at }).then(() => { if (!item.archived_at && conversationIdRef.current === item.id) startNewChat() }).catch((e) => setConversationNotice(e.message))}
+        onRenameConversation={(item) => { const title = window.prompt("Conversation name", item.title); if (title?.trim()) void updateConversation(item.id, { title }).catch((e) => setConversationNotice(e.message)) }}
+        onDeleteConversation={(item) => void deleteConversation(item.id)}
       />
 
       <SidebarInset className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -208,14 +292,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
                   </EmptyDescription>
                 </EmptyHeader>
                 <EmptyContent>
-                  <Suggestions
-                    onSelect={(prompt) =>
-                      sendMessage(
-                        { text: prompt },
-                        { body: { model: resolvedModel } }
-                      )
-                    }
-                  />
+                  <Suggestions onSelect={(prompt) => void handleSendMessage(prompt)} />
                 </EmptyContent>
               </Empty>
             </div>
@@ -285,10 +362,10 @@ export function Chat({ models }: { models: GatewayModel[] }) {
           )}
 
           <div className="mx-auto flex w-full max-w-2xl shrink-0 flex-col gap-2 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6">
-            {(error || attachmentError) && (
+            {(error || attachmentError || conversationNotice) && (
               <Alert variant="destructive">
                 <AlertTitle>Request failed</AlertTitle>
-                <AlertDescription>{attachmentError || readableErrorMessage}</AlertDescription>
+                <AlertDescription>{attachmentError || conversationNotice || readableErrorMessage}</AlertDescription>
               </Alert>
             )}
             <PromptForm
