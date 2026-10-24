@@ -80,6 +80,7 @@ export function PromptForm({
   onComposerFocus: () => void
 }) {
   const maxSelectableImages = Math.min(MAX_IMAGE_COUNT, maxImages)
+  void canAttachImages // Documents remain attachable even when the selected text model cannot accept images directly.
   const [input, setInput] = React.useState("")
   const [selectedImages, setSelectedImages] = React.useState<File[]>([])
   const [imageError, setImageError] = React.useState("")
