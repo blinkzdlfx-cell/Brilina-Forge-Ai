@@ -158,7 +158,15 @@ export async function POST(request: Request, context: { params: Promise<{ fileId
       text = await analyzeImage(bytes, file.mime_type, prompt, model)
     } else {
       if (mode === "analyze") return Response.json({ error: "document_requires_extract_mode" }, { status: 400 })
-      if (file.mime_type === "text/plain" || file.mime_type === "text/markdown" || file.mime_type === "text/x-markdown") text = decodeText(bytes)
+      if (["text/plain", "text/markdown", "text/x-markdown", "text/csv"].includes(file.mime_type)) text = decodeText(bytes)
+      else if (file.mime_type === "application/json") {
+        const source = decodeText(bytes)
+        text = JSON.stringify(JSON.parse(source), null, 2).slice(0, MAX_EXTRACTED_CHARS)
+      }
+      else if (file.mime_type === "text/html") {
+        const source = decodeText(bytes)
+        text = source.replace(/<script\\b[^>]*>[\\s\\S]*?<\\/script>/gi, " ").replace(/<style\\b[^>]*>[\\s\\S]*?<\\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\\s+/g, " ").trim().slice(0, MAX_EXTRACTED_CHARS)
+      }
       else if (file.mime_type === DOCX_TYPE) text = extractDocx(bytes)
       else if (file.mime_type === "application/pdf") text = await extractPdf(bytes)
       else return Response.json({ error: "unsupported_file_type" }, { status: 415 })

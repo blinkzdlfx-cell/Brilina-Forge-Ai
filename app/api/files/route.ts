@@ -12,6 +12,9 @@ const ALLOWED_TYPES = new Set([
   "text/plain",
   "text/markdown",
   "text/x-markdown",
+  "text/csv",
+  "text/html",
+  "application/json",
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ])

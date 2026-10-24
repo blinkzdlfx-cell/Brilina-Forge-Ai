@@ -20,12 +20,12 @@ const MAX_IMAGE_FILE_BYTES = 1024 * 1024
 const MAX_TOTAL_IMAGE_BYTES = 3 * 1024 * 1024
 const MAX_DOCUMENT_FILE_BYTES = 10 * 1024 * 1024
 const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"])
-const ALLOWED_DOCUMENT_TYPES = new Set(["text/plain", "text/markdown", "text/x-markdown", "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"])
+const ALLOWED_DOCUMENT_TYPES = new Set(["text/plain", "text/markdown", "text/x-markdown", "text/csv", "text/html", "application/json", "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"])
 
 function normalizeAttachment(file: File) {
   if (file.type) return file
   const ext = file.name.toLowerCase().split(".").pop()
-  const type = ext === "md" ? "text/markdown" : ext === "txt" ? "text/plain" : ext === "pdf" ? "application/pdf" : ext === "docx" ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : ext === "png" ? "image/png" : ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "webp" ? "image/webp" : ""
+  const type = ext === "md" ? "text/markdown" : ext === "txt" ? "text/plain" : ext === "csv" ? "text/csv" : ext === "html" || ext === "htm" ? "text/html" : ext === "json" ? "application/json" : ext === "pdf" ? "application/pdf" : ext === "docx" ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : ext === "png" ? "image/png" : ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "webp" ? "image/webp" : ""
   return type ? new File([file], file.name, { type, lastModified: file.lastModified }) : file
 }
 
@@ -578,7 +578,7 @@ export function PromptForm({
                 <input
                   ref={imageInputRef}
                   type="file"
-                  accept="image/png,image/jpeg,image/webp,.txt,.md,.pdf,.docx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  accept="image/png,image/jpeg,image/webp,.txt,.md,.csv,.json,.html,.htm,.pdf,.docx,text/plain,text/markdown,text/csv,application/json,text/html,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                   multiple
                   className="hidden"
                   onChange={handleImageSelection}

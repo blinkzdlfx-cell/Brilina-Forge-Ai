@@ -185,6 +185,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
           })
           const processPayload = await processed.json() as { text?: string; error?: string }
           if (!processed.ok || typeof processPayload.text !== "string") {
+            await fetch("/api/files/" + encodeURIComponent(uploadPayload.file.id), { method: "DELETE" }).catch(() => undefined)
             setAttachmentError("Could not process " + file.name + ". " + (processPayload.error ?? "Try a supported file or try again."))
             return
           }

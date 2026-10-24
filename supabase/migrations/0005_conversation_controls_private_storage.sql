@@ -27,7 +27,7 @@ values (
   10485760,
   array[
     'image/png', 'image/jpeg', 'image/webp',
-    'text/plain', 'text/markdown', 'text/x-markdown',
+    'text/plain', 'text/markdown', 'text/x-markdown', 'text/csv', 'text/html', 'application/json',
     'application/pdf',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   ]
