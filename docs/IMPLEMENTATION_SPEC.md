@@ -696,7 +696,7 @@ Run the full suite after the earlier stages have individually passed.
 - [ ] Image uploads use private Supabase Storage and file references.
 - [ ] Vision requests use the external provider and enforce file ownership.
 - [ ] PDF works before TXT and DOCX are enabled.
-- [ ] Voice transcription remains callable without sign-in for personal use, with strict input bounds, safe errors, feature-flag control, and documented shared-quota/abuse risk.
+- [ ] Voice transcription requires a verified, non-disabled user session and enforces strict input/session bounds, safe errors, feature-flag control, and quota handling.
 - [ ] RLS isolates two users across conversations, messages, files, and access state.
 - [ ] Quota exhaustion, timeouts, unsupported files, and storage limits have clear errors.
 - [ ] No service-role key, SMTP credential, provider secret, reset token, TOTP secret, or plaintext password appears in client bundles, logs, or responses.
