@@ -1,9 +1,10 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 
-export function LoginForm() {
+export function LoginForm({ passwordResetComplete = false }: { passwordResetComplete?: boolean }) {
   const router = useRouter()
   const [email, setEmail] = React.useState("")
   const [password, setPassword] = React.useState("")
@@ -37,31 +38,13 @@ export function LoginForm() {
     }
   }
 
-  async function requestReset() {
-    setError("")
-    setNotice("")
-    if (!email.trim()) {
-      setError("Enter your email address first.")
-      return
-    }
-    setBusy(true)
-    try {
-      const response = await fetch("/api/auth/password-reset", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email }),
-      })
-      if (!response.ok) throw new Error("reset")
-      setNotice("If that email belongs to an enabled account, a password-reset link will be sent.")
-    } catch {
-      setNotice("If that email belongs to an enabled account, a password-reset link will be sent.")
-    } finally {
-      setBusy(false)
-    }
-  }
-
   return (
     <form onSubmit={submit} className="w-full space-y-4">
+      {passwordResetComplete && (
+        <p role="status" className="rounded-xl border border-border bg-muted/50 p-3 text-sm">
+          Your password has been reset. Sign in with your new password.
+        </p>
+      )}
       <div className="space-y-1.5">
         <label htmlFor="login-email" className="text-sm font-medium">Email</label>
         <input id="login-email" type="email" autoComplete="username" required maxLength={320} value={email}
@@ -104,9 +87,11 @@ export function LoginForm() {
       <button type="submit" disabled={busy} className="h-11 w-full rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-60">
         {busy ? "Please wait…" : "Sign in"}
       </button>
-      <button type="button" disabled={busy} onClick={() => void requestReset()} className="w-full rounded-lg px-3 py-2 text-sm text-muted-foreground underline-offset-4 hover:underline disabled:opacity-60">
-        Forgot password?
-      </button>
+      <div className="text-center">
+        <Link href="/forgot-password" className="rounded-lg px-3 py-2 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          Forgot password?
+        </Link>
+      </div>
       <p className="text-center text-xs text-muted-foreground">Accounts are created by the Brilina Forge owner. Public sign-up is disabled.</p>
     </form>
   )
