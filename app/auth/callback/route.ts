@@ -26,10 +26,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/login?error=auth_callback_failed", request.url))
   }
 
-  // Keep the redirect response and Supabase auth cookies together. In the
-  // Cloudflare Worker runtime, returning a separately-created redirect can
-  // otherwise lose the recovery session cookies written during code exchange.
-  let response = NextResponse.redirect(new URL(next, request.url))
+  // Keep one redirect response for the entire exchange. Supabase can call
+  // setAll more than once (including to clear the PKCE verifier cookie).
+  // Recreating the response inside setAll can discard cookies written by an
+  // earlier call, leaving the browser without the recovery session.
+  const response = NextResponse.redirect(new URL(next, request.url))
 
   try {
     const supabase = createServerClient(supabaseUrl, supabaseKey, {
@@ -42,7 +43,6 @@ export async function GET(request: NextRequest) {
             request.cookies.set(name, value)
           }
 
-          response = NextResponse.redirect(new URL(next, request.url))
           for (const { name, value, options } of cookiesToSet) {
             response.cookies.set(name, value, options)
           }

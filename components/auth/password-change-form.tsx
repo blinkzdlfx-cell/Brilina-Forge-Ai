@@ -43,7 +43,13 @@ export function PasswordChangeForm({ mode }: { mode: "change" | "reset" }) {
 
       const supabase = createClient()
       const { error: updateError } = await supabase.auth.updateUser({ password })
-      if (updateError) throw new Error("The reset link may have expired. Request a new password-reset email.")
+      if (updateError) {
+        const message = updateError.message.toLowerCase()
+        if (message.includes("session") || message.includes("token") || message.includes("auth")) {
+          throw new Error("The recovery session is missing or invalid. Request a new password-reset email and open the newest link in the same browser. If this continues, share this exact error: " + updateError.message)
+        }
+        throw new Error("Password reset failed: " + updateError.message)
+      }
       await supabase.auth.signOut()
       setSuccess("Password updated. Sign in with your new password.")
       router.replace("/login?reset=1")
