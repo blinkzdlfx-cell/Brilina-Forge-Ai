@@ -1,4 +1,3 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { NextResponse } from "next/server"
 
 import { requireUser } from "@/lib/auth/require-user"
@@ -8,7 +7,7 @@ import { recordSecureDiagnostic } from "@/lib/secure-diagnostic"
 
 const MAX_AUDIO_BYTES = 20 * 1024 * 1024
 const MAX_REQUEST_BYTES = MAX_AUDIO_BYTES + 1024
-const MAX_RECORDING_MS = 15 * 60 * 1000
+const MAX_RECORDING_MS = 10 * 60 * 1000
 const MAX_RETRY_AGE_MS = 5 * 60 * 1000
 const ALLOWED_AUDIO_TYPES = new Set([
   "audio/flac",
@@ -21,18 +20,6 @@ const ALLOWED_AUDIO_TYPES = new Set([
   "audio/webm",
 ])
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-
-type WorkersAI = {
-  run: (
-    model: string,
-    input: {
-      audio: string
-      task: "transcribe"
-      vad_filter: boolean
-      condition_on_previous_text: boolean
-    }
-  ) => Promise<{ text?: unknown }>
-}
 
 function jsonError(message: string, status: number) {
   return NextResponse.json({ error: message }, { status })
@@ -98,7 +85,7 @@ export async function POST(request: Request) {
     return jsonError("Recording session is invalid. Start a new recording.", 400)
   }
   if (stoppedAt < startedAt || stoppedAt - startedAt > MAX_RECORDING_MS) {
-    return jsonError("The recording exceeded the 15-minute limit. Record a shorter message.", 413)
+    return jsonError("The recording exceeded the 10-minute limit. Record a shorter message.", 413)
   }
   if (now > expiresAt || now - stoppedAt > MAX_RETRY_AGE_MS) {
     return jsonError("The recording session expired. Start a new recording.", 410)
@@ -147,28 +134,48 @@ export async function POST(request: Request) {
     return jsonError("Audio must be 20 MB or smaller. Record a shorter message.", 413)
   }
 
-  let ai: WorkersAI | undefined
-  try {
-    const env = getCloudflareContext().env as unknown as { AI?: WorkersAI }
-    ai = env.AI
-  } catch {
-    // Next.js local dev has no Workers AI binding unless running under Wrangler.
-  }
-
-  if (!ai) {
-    await recordSecureDiagnostic({ event: "transcription_binding_missing", route: "/api/transcribe", userId: context.user.id, requestId, statusCode: 503, details: { stage: "workers_ai_binding" } })
-    return jsonError("Workers AI is not available in this runtime. Check the Cloudflare AI binding.", 503)
+  const accountId = getRuntimeEnv("CLOUDFLARE_ACCOUNT_ID")
+  const apiToken = getRuntimeEnv("CLOUDFLARE_AI_API_TOKEN")
+  if (!accountId || !apiToken) {
+    await recordSecureDiagnostic({ event: "transcription_provider_not_configured", route: "/api/transcribe", userId: context.user.id, requestId, statusCode: 503, details: { stage: "provider_configuration", accountIdPresent: Boolean(accountId), tokenPresent: Boolean(apiToken) } })
+    return jsonError("The transcription service is not configured.", 503)
   }
 
   try {
-    const result = await ai.run("@cf/openai/whisper-large-v3-turbo", {
-      audio: toBase64(new Uint8Array(audio)),
-      task: "transcribe",
-      vad_filter: true,
-      condition_on_previous_text: false,
-    })
+    const providerResponse = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/openai/whisper-large-v3-turbo`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          audio: toBase64(new Uint8Array(audio)),
+          task: "transcribe",
+          vad_filter: true,
+          condition_on_previous_text: false,
+        }),
+        signal: AbortSignal.timeout(120_000),
+      }
+    )
+    const providerPayload: unknown = await providerResponse.json().catch(() => null)
+    const result =
+      providerPayload && typeof providerPayload === "object" && "result" in providerPayload
+        ? (providerPayload as { result?: { text?: unknown } }).result
+        : undefined
 
-    if (typeof result.text !== "string") {
+    if (!providerResponse.ok) {
+      const providerStatus = providerResponse.status
+      const rateLimited = providerStatus === 429
+      await recordSecureDiagnostic({ event: "transcription_provider_failed", route: "/api/transcribe", userId: context.user.id, requestId, statusCode: rateLimited ? 429 : 502, details: { stage: "cloudflare_ai_rest", providerStatus } })
+      if (rateLimited) {
+        return jsonError("The transcription service is busy or its quota is exhausted. Try again later.", 429)
+      }
+      return jsonError("Transcription failed. Try again with a shorter recording.", 502)
+    }
+
+    if (typeof result?.text !== "string") {
       await recordSecureDiagnostic({ event: "transcription_provider_empty_result", route: "/api/transcribe", userId: context.user.id, requestId, statusCode: 502, details: { stage: "workers_ai_result", provider: "workers_ai_whisper" } })
       return jsonError("The transcription service returned no transcript.", 502)
     }
@@ -179,11 +186,10 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ text: result.text.trim() })
   } catch (error) {
-    const message = error instanceof Error ? error.message : ""
-    const rateLimited = /429|quota|rate.?limit/i.test(message)
-    await recordSecureDiagnostic({ event: "transcription_provider_failed", route: "/api/transcribe", userId: context.user.id, requestId, statusCode: rateLimited ? 429 : 502, details: { stage: "workers_ai_run", errorClass: error instanceof Error ? error.name.slice(0, 60) : "unknown" } })
-    if (rateLimited) {
-      return jsonError("The transcription service is busy or its quota is exhausted. Try again later.", 429)
+    const timedOut = error instanceof Error && (error.name === "TimeoutError" || /timeout/i.test(error.message))
+    await recordSecureDiagnostic({ event: "transcription_provider_failed", route: "/api/transcribe", userId: context.user.id, requestId, statusCode: timedOut ? 504 : 502, details: { stage: "cloudflare_ai_rest", errorClass: error instanceof Error ? error.name.slice(0, 60) : "unknown" } })
+    if (timedOut) {
+      return jsonError("Transcription took too long. Try a shorter recording.", 504)
     }
     return jsonError("Transcription failed. Try a shorter recording and try again.", 502)
   }
