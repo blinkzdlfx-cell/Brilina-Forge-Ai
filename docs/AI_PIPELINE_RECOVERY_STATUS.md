@@ -34,7 +34,7 @@ See:
 
 ## Rules for future work
 
-- Start from current `main) and inspect the actual source before editing.
+- Start from current `main` and inspect the actual source before editing.
 - Preserve existing UI, provider contracts, and working behavior unless a verified defect requires a change.
 - Keep changes on a review branch and complete one small batch before starting another.
 - Do not provision services, add dependencies, alter schemas, configure secrets, or deploy to production without explicit approval.
