@@ -1,26 +1,28 @@
 # Brilina Forge AI — Repository Implementation Specification
 
 **Repository:** `blinkzdlfx-cell/Brilina-Forge-Ai`  
-**Target application branch:** `main`  
-**Specification branch:** `docs/owner-managed-auth-spec`  
+**Application branch:** `main`  
 **Runtime:** Next.js 16, React 19, AI SDK, OpenNext on Cloudflare Workers  
-**Status:** Batch 1 (Stages 1–3) implementation in progress on feat/batch-1-foundation-auth; not yet merged or deployed.  
-**Execution rule:** The owner approved Batch 1 (Stages 1–3) on 2026-10-22. Implement each batch in its agreed grouping, add/update tests alongside implementation, and run the batch checks before proceeding. Do not skip a stage or start GitHub integration early. If a critical design blocker appears, stop and report it rather than silently changing scope.
+**Last reconciled against main:** `ee35aaef5dae79d4ab7fb695b9f3f1e133f47ea5` (2026-10-24)  
+**Status:** This is the product/stage requirements specification, not a live implementation tracker. Some original status statements and repository observations below describe an earlier baseline. Verify each stage against current source, migration state, and live acceptance evidence before treating it as pending or complete.  
+**Execution rule:** Work in small, reviewable batches. Before each batch, state the scope, affected files, assumptions, risks, and tests. Finish the batch's verification gate and report evidence before moving on. No production deployment or GitHub integration without separate explicit approval.
 
-This document is the current source of truth for the planned backend, authentication, persistence, and file-handling work. It supersedes conflicting earlier recommendations in `docs/REUSABLE-FOUNDATION-PLAN.md` concerning Better Auth, Neon, Cloudflare R2, and sign-in methods. Keep that file's useful repository-audit observations, but do not follow its superseded provider decisions.
+This document retains the approved product requirements for the application foundation, authentication, persistence, file handling, and related stages. The current plan for the next CPU/reliability investigation, possible external compute, and Agent Workflow System is `docs/NEXT_PHASE_PLAN.md`. The older `docs/REUSABLE-FOUNDATION-PLAN.md` is a historical audit; its Better Auth, Neon, and R2 recommendations are superseded by the Supabase-based decisions here.
 
-## Current implementation progress
+## Status and verification rules
 
-- Batch 1 work is being proposed on feat/batch-1-foundation-auth: Stage 1 adds the 4,000-character aggregate Tavily excerpt budget; Stage 2 adds core Supabase schema/RLS migrations and documentation; Stage 3 adds Supabase SSR clients, protected chat/transcription APIs, owner-only AAL2 administration, password lifecycle routes, and server-timestamped voice sessions.
-- The Supabase migrations have not been applied to a live project, and Supabase Auth settings, owner bootstrap, Brevo SMTP, and Cloudflare environment variables remain operator-controlled setup tasks.
-- Passing CI does not replace live two-user RLS, email-delivery, MFA, revocation, or 15-minute voice-session acceptance tests.
+- The owner has confirmed that password recovery works after the MFA/AAL2 recovery fix. Do not redesign that flow without a demonstrated defect.
+- Repository migrations, configuration files, and passing CI do not prove that the corresponding live Supabase settings or production deployment are complete.
+- The live status of conversation persistence, storage setup, external document providers, keep-alive configuration, and other staged features must be verified from current source and runtime evidence.
+- The source currently enforces a 15-minute voice recording limit. Keep documentation aligned with the code unless an approved change is made.
+- Existing stage descriptions below define desired behavior and acceptance criteria; they are not evidence that work has or has not been implemented.
 
 ## 1. Goals and fixed decisions
 
 - Personal project; prioritize free tiers and handle quotas, pauses, and provider failures clearly.
 - Keep the existing React/Next.js UI and integrate with it. Do not rebuild the application.
 - Keep text generation on Cloudflare Workers AI.
-- Use Supabase for PostgreSQL, Auth, and private Storage. This is a fresh setup: there is no existing database, storage, authentication, or user data to migrate.
+- Use Supabase for PostgreSQL, Auth, and private Storage. The original fresh-project assumption is historical; verify current live schema, data, buckets, Auth settings, and migration application state before any migration or reset.
 - Use an external hosted vision provider, starting with Groq if its model availability and free limits fit.
 - Use a document-capable external provider for PDFs, with Gemini as the initial candidate if its free allocation and limits fit.
 - Keep Tavily, retaining its existing protections and adding a 4,000-character aggregate excerpt budget.
@@ -33,7 +35,7 @@ This document is the current source of truth for the planned backend, authentica
 - No public sign-up, invitation codes, or invite links. The owner creates accounts from the owner-only admin screen.
 - Batch 1 implementation is approved. Later batches require their own preflight and explicit approval before implementation.
 
-## 2. Repository baseline inspected
+## 2. Original repository baseline (historical; re-verify against current main)
 
 The current `main` branch contains:
 
@@ -55,8 +57,8 @@ The current `main` branch contains:
 Current constraints and cautions:
 
 1. Chats exist only in client memory and disappear on refresh.
-2. There is no database, auth, or storage integration yet.
-3. Chat and transcription endpoints are currently unauthenticated. Stage 3 must protect both endpoints and all private application APIs with a verified, non-disabled session.
+2. At the original audit baseline, database, auth, and storage integration were absent. This statement is historical and must not be used as the current status.
+3. At the original audit baseline, chat and transcription endpoints were unauthenticated. Current source includes session/access enforcement; verify route-by-route before making changes.
 4. `wrangler.jsonc` currently sets `VOICE_TRANSCRIPTION_ENABLED` to true, while older README guidance says to disable public transcription. The agreed decision is to require authentication for transcription. Stage 3 must reconcile the README and deployment configuration, preserve the feature flag, enforce session/access checks, and retain bounded audio size/duration, request timeouts, and safe errors.
 5. The chat composer currently sends selected images as file parts in the chat request. Stage 6–7 replace that flow with upload-first file references.
 6. Tavily already limits results to five, truncates each excerpt to 1,200 characters, limits the response body to 128 KiB, removes duplicate normalized HTTPS URLs, retries one bounded transient failure, and reports partial results. Preserve these protections.
