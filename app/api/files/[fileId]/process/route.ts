@@ -165,7 +165,7 @@ export async function POST(request: Request, context: { params: Promise<{ fileId
       }
       else if (file.mime_type === "text/html") {
         const source = decodeText(bytes)
-        text = source.replace(/<script\\b[^>]*>[\\s\\S]*?<\\/script>/gi, " ").replace(/<style\\b[^>]*>[\\s\\S]*?<\\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\\s+/g, " ").trim().slice(0, MAX_EXTRACTED_CHARS)
+        text = source.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ").replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim().slice(0, MAX_EXTRACTED_CHARS)
       }
       else if (file.mime_type === DOCX_TYPE) text = extractDocx(bytes)
       else if (file.mime_type === "application/pdf") text = await extractPdf(bytes)
