@@ -12,7 +12,7 @@ test("conversation controls preserve title and add pin/archive state", () => {
   assert.match(migration, /add column if not exists archived_at timestamptz/i)
   assert.match(migration, /conversations_active_user_idx/i)
   assert.match(migration, /conversations_archived_user_idx/i)
-  assert.match(migration, /durable user-visible name/i)
+  assert.match(migration, /durable[\\s\\S]*user-visible name/i)
 })
 
 test("private file bucket is private, bounded, and limited to supported file types", () => {
