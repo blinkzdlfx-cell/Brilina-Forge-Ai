@@ -5,7 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { getRuntimeEnv } from "@/lib/runtime-env"
 import { recordSecureDiagnostic } from "@/lib/secure-diagnostic"
 
-const MAX_RECORDING_MS = 15 * 60 * 1000
+const MAX_RECORDING_MS = 10 * 60 * 1000
 const SESSION_RETENTION_MS = 20 * 60 * 1000
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -79,7 +79,7 @@ export async function POST(request: Request) {
       }
       if (!data) {
         await recordSecureDiagnostic({ event: "recording_session_finish_rejected", level: "warning", route: "/api/transcribe/session", userId: context.user.id, requestId, statusCode: 413, details: { stage: "finish_update", reason: "missing_or_too_old_session" } })
-        return error("The recording exceeded the 15-minute limit. Record a shorter message.", 413)
+        return error("The recording exceeded the 10-minute limit. Record a shorter message.", 413)
       }
       await recordSecureDiagnostic({ event: "recording_session_finished", level: "info", route: "/api/transcribe/session", userId: context.user.id, requestId, statusCode: 200 })
       return NextResponse.json({ success: true })
