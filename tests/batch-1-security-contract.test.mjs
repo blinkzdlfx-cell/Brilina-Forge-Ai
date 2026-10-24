@@ -46,5 +46,7 @@ test("voice sessions use server timestamps and enforce the 10-minute limit", asy
   assert.match(migration, /attempt_count integer not null default 0/)
   assert.match(prompt, /10 \* 60 \* 1000/)
   assert.match(prompt, /finalizeRecording\("insert"\)/)
+  assert.match(prompt, /Maximum recording length is 10 minutes\. Your recording has been transcribed\./)
+  assert.match(prompt, /maxLengthReachedRef/)
   assert.doesNotMatch(prompt, /Recording time remaining|Countdown/i)
 })
