@@ -1,5 +1,7 @@
 # AI Pipeline Implementation — Three Batches
 
+> **Status note (2026-10-24):** This is the historical plan for recovering the AI-pipeline implementation, not the status authority for the next phase. The current plan is [`docs/NEXT_PHASE_PLAN.md`](NEXT_PHASE_PLAN.md). Re-check current source and CI before assuming any listed batch remains pending or complete. The old branch name and checkpoint descriptions below are historical.
+
 **Correct repository:** `blinkzdlfx-cell/Brilina-Forge-Ai`  
 **Execution order:** Batch 1 → verify/gate → Batch 2 → verify/gate → Batch 3 (Tavily last).  
 **Production:** No production deployment is authorized by this plan.
