@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import Link from "next/link"
 
 import { PasswordChangeForm } from "@/components/auth/password-change-form"
 
@@ -13,9 +14,15 @@ export default function ResetPasswordPage() {
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Account recovery</p>
           <h1 className="text-2xl font-semibold">Set a new password</h1>
-          <p className="text-sm text-muted-foreground">Use the recovery link sent to your email. Expired links must be requested again.</p>
+          <p className="text-sm text-muted-foreground">Use the recovery link sent to your email. If the link has expired or already been used, request a new one below.</p>
         </div>
         <PasswordChangeForm mode="reset" />
+        <p className="text-center text-sm text-muted-foreground">
+          Need another link?{" "}
+          <Link href="/forgot-password" className="font-medium text-foreground underline-offset-4 hover:underline">
+            Request a new password reset
+          </Link>
+        </p>
       </section>
     </main>
   )
