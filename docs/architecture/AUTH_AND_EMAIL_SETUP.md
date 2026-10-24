@@ -1,4 +1,7 @@
-# Authentication and Brevo email setup
+# Authentication and email delivery setup
+
+
+> **Provider status note (2026-10-24):** This guide's SMTP checklist currently describes the existing/documented Brevo setup. Resend is the intended replacement direction, but do not treat that migration as complete until the selected Supabase Auth email-delivery arrangement, secrets/settings, templates, and live password-reset/verification tests are verified. Keep provider credentials out of the repository.
 
 ## Required runtime configuration
 
