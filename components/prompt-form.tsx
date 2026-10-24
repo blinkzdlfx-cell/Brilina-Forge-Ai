@@ -78,6 +78,7 @@ export function PromptForm({
   const inputRef = React.useRef("")
   const [voiceState, setVoiceState] = React.useState<VoiceState>("idle")
   const [voiceError, setVoiceError] = React.useState("")
+  const [voiceNotice, setVoiceNotice] = React.useState("")
   const [waveformLevel, setWaveformLevel] = React.useState(0)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const recorderRef = React.useRef<MediaRecorder | null>(null)
@@ -92,6 +93,7 @@ export function PromptForm({
   const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const recordingTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null)
   const cancelledRef = React.useRef(false)
+  const maxLengthReachedRef = React.useRef(false)
 
   function resizeTextarea(textarea: HTMLTextAreaElement) {
     textarea.style.height = "auto"
@@ -200,6 +202,10 @@ export function PromptForm({
       }
 
       const transcript = result.text.trim()
+      if (maxLengthReachedRef.current) {
+        setVoiceNotice("Maximum recording length is 10 minutes. Your recording has been transcribed.")
+        maxLengthReachedRef.current = false
+      }
       audioBlobRef.current = null
       recordingSessionRef.current = null
       setHasAudio(false)
@@ -247,6 +253,8 @@ export function PromptForm({
     intentRef.current = "insert"
     recordingSessionRef.current = null
     setVoiceError("")
+    setVoiceNotice("")
+    maxLengthReachedRef.current = false
     cancelledRef.current = false
     if (
       typeof navigator === "undefined" ||
@@ -339,7 +347,10 @@ export function PromptForm({
       // server within the 10-minute window. No timer is rendered in the UI.
       recordingTimerRef.current = setInterval(() => {
         const elapsed = Date.now() - startedAt
-        if (elapsed >= MAX_RECORDING_MS - AUTO_STOP_MARGIN_MS) finalizeRecording("insert")
+        if (elapsed >= MAX_RECORDING_MS - AUTO_STOP_MARGIN_MS) {
+          maxLengthReachedRef.current = true
+          finalizeRecording("insert")
+        }
       }, 100)
     } catch (error) {
       stopMicrophone()
@@ -356,6 +367,7 @@ export function PromptForm({
 
   function cancelVoice() {
     cancelledRef.current = true
+    maxLengthReachedRef.current = false
     const sessionId = recordingSessionRef.current
     if (sessionId) {
       void fetch("/api/transcribe/session", {
@@ -525,6 +537,11 @@ export function PromptForm({
           }}
         />
         <InputGroupAddon align="block-end">
+          {voiceNotice && !voiceError && !imageError && (
+            <span role="status" className="max-w-64 text-xs text-muted-foreground">
+              {voiceNotice}
+            </span>
+          )}
           {(voiceError || imageError) && (
             <span role="status" className="max-w-64 text-xs text-destructive">
               {imageError || voiceError}
