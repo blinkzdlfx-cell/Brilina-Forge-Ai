@@ -128,7 +128,8 @@ export function Chat({ models }: { models: GatewayModel[] }) {
   const handleSendMessage = React.useCallback(
     async (text: string, files: File[] = []) => {
       let requestModel = resolvedModel
-      const totalImageCount = recentImageCount + files.length
+      const imageFiles = files.filter((file) => file.type.startsWith("image/"))
+      const totalImageCount = recentImageCount + imageFiles.length
       if (totalImageCount > 0) {
         const currentModel = models.find((item) => item.id === requestModel)
         if (
@@ -165,11 +166,32 @@ export function Chat({ models }: { models: GatewayModel[] }) {
       // for image requests and are not exposed in the model selector.
 
       if (files.length > 0) {
-        const transfer = new DataTransfer()
-        files.forEach((file) => transfer.items.add(file))
-        void sendMessage({ text, files: transfer.files }, { body: { model: requestModel } })
+        const attachmentText: string[] = []
+        for (const file of files) {
+          const form = new FormData()
+          form.set("file", file)
+          if (targetId) form.set("conversationId", targetId)
+          const uploaded = await fetch("/api/files", { method: "POST", body: form })
+          const uploadPayload = await uploaded.json() as { file?: { id: string; original_name: string }; error?: string }
+          if (!uploaded.ok || !uploadPayload.file?.id) {
+            setAttachmentError("Could not securely upload " + file.name + ". " + (uploadPayload.error ?? "Try again."))
+            return
+          }
+          const image = file.type.startsWith("image/")
+          const processed = await fetch("/api/files/" + encodeURIComponent(uploadPayload.file.id) + "/process", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mode: image ? "analyze" : "extract", prompt: text || "Describe this image accurately, including visible text and important details.", model: requestModel }),
+          })
+          const processPayload = await processed.json() as { text?: string; error?: string }
+          if (!processed.ok || typeof processPayload.text !== "string") {
+            setAttachmentError("Could not process " + file.name + ". " + (processPayload.error ?? "Try a supported file or try again."))
+            return
+          }
+          attachmentText.push("\n\n[Attachment: " + file.name + "]\n" + processPayload.text.slice(0, 9000))
+        }
+        void sendMessage({ text: (text || "Please analyze the attached files.") + attachmentText.join("") }, { body: { model: resolvedModel } })
       } else {
-        void sendMessage({ text }, { body: { model: requestModel } })
+        void sendMessage({ text }, { body: { model: resolvedModel } })
       }
     },
     [models, recentImageCount, resolvedModel, sendMessage, refreshConversations]
