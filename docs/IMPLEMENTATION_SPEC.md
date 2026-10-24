@@ -2,12 +2,12 @@
 
 **Repository:** `blinkzdlfx-cell/Brilina-Forge-Ai`  
 **Application branch:** `main`  
-**Runtime:** Next.js 16, React 19, AI SDK, OpenNext on Cloudflare Workers  
+**Current runtime:** Next.js 16, React 19, AI SDK, OpenNext on Cloudflare Workers  
 **Last reconciled against main:** `ee35aaef5dae79d4ab7fb695b9f3f1e133f47ea5` (2026-10-24)  
-**Status:** This is the product/stage requirements specification, not a live implementation tracker. Some original status statements and repository observations below describe an earlier baseline. Verify each stage against current source, migration state, and live acceptance evidence before treating it as pending or complete.  
-**Execution rule:** Work in small, reviewable batches. Before each batch, state the scope, affected files, assumptions, risks, and tests. Finish the batch's verification gate and report evidence before moving on. No production deployment or GitHub integration without separate explicit approval.
+**Status:** Product/stage requirements, not a live implementation tracker. Verify each stage against current source, automated tests, live migration state, and acceptance evidence.  
+**Execution rule:** Small sequential batches only. No production deployment or GitHub integration without separate explicit approval.
 
-This document retains the approved product requirements for the application foundation, authentication, persistence, file handling, and related stages. The current plan for the next CPU/reliability investigation, possible external compute, and Agent Workflow System is `docs/NEXT_PHASE_PLAN.md`. The older `docs/REUSABLE-FOUNDATION-PLAN.md` is a historical audit; its Better Auth, Neon, and R2 recommendations are superseded by the Supabase-based decisions here.
+This document retains product requirements and acceptance criteria. **Runtime/hosting authority is `docs/NEXT_PHASE_PLAN.md`**: the current Cloudflare deployment is the baseline, not a decision to keep the full app on Cloudflare. Evaluate Google Cloud Run vs Google Cloud Functions and make a complete runtime decision before implementation. Do not duplicate already-present Batch 1 code.
 
 ## Status and verification rules
 
@@ -21,7 +21,7 @@ This document retains the approved product requirements for the application foun
 
 - Personal project; prioritize free tiers and handle quotas, pauses, and provider failures clearly.
 - Keep the existing React/Next.js UI and integrate with it. Do not rebuild the application.
-- Keep text generation on Cloudflare Workers AI.
+- Current provider/runtime placement is a baseline, not an immutable decision. Follow `docs/NEXT_PHASE_PLAN.md` for the Google Cloud Run vs Google Cloud Functions architecture review; preserve provider behavior unless the approved architecture decision explicitly changes it.
 - Use Supabase for PostgreSQL, Auth, and private Storage. The original fresh-project assumption is historical; verify current live schema, data, buckets, Auth settings, and migration application state before any migration or reset.
 - Use an external hosted vision provider, starting with Groq if its model availability and free limits fit.
 - Use a document-capable external provider for PDFs, with Gemini as the initial candidate if its free allocation and limits fit.
@@ -648,33 +648,27 @@ Complete Stage 8's implementation and add its tests before moving to Stage 9. Ru
 
 Complete Stage 9's implementation and add its tests before moving to Stage 10. Run the consolidated test suite after Batch 4.
 
-## 15. Stage 10 — Supabase keep-alive job
+## 15. Stage 10 — Supabase keep-alive job (runtime decision pending)
 
-**Scope:** configure a Cloudflare Cron Trigger to make a lightweight request to Supabase at the lowest frequency that satisfies the applicable plan activity requirement.
+**Scope:** determine whether a keep-alive job is still justified by the current Supabase plan, then use a scheduler supported by the approved primary runtime.
 
-**Files:** `wrangler.jsonc`, the existing OpenNext scheduled-handler integration or a compatible scheduled entry point, deployment settings, and `docs/architecture/SUPABASE_KEEPALIVE.md`.
+**Files:** runtime-specific scheduler/handler, deployment settings, and `docs/architecture/SUPABASE_KEEPALIVE.md`, only after the architecture decision.
 
 **Design:**
-
-- Inspect the installed OpenNext Cloudflare runtime and deployment configuration before adding the scheduled handler. Do not create a conflicting second deployment.
-- Use a minimal, read-only request/query that qualifies as activity under the current Supabase plan rules.
-- Use a server-side secret or supported credential; never log it.
-- Avoid unnecessary writes and overlapping work.
-- Log only success/failure and non-sensitive timing/status information.
-- Document the chosen schedule and why it is the lowest frequency that works.
-- Treat this as a best-effort inactivity mitigation, not a guarantee that Supabase will never pause. Re-check plan rules during implementation.
+- Verify current Supabase plan rules and the actual project's activity/pause status before implementing anything.
+- Prefer no keep-alive job if it is unnecessary or not permitted by the applicable plan rules.
+- If justified, use the lowest suitable schedule and a lightweight read-only request/query.
+- Use server-side credentials; never log secrets or perform unnecessary writes.
+- Do not create a conflicting second deployment or assume Cloudflare Cron remains the scheduler after migration.
+- Treat this as best-effort inactivity mitigation, not a guarantee that Supabase will never pause.
 
 **Verification:**
-
-- [ ] Cron is registered in the correct Worker deployment.
-- [ ] Scheduled request reaches the intended Supabase project.
-- [ ] The request is lightweight and does not perform unnecessary writes.
+- [ ] A documented plan rule and project need justify the job.
+- [ ] Scheduler belongs to the approved runtime.
+- [ ] Request is lightweight and read-only where possible.
 - [ ] Secrets are not logged or exposed.
-- [ ] Failures are recorded safely and do not crash application routes.
-- [ ] Schedule and free-plan caveats are documented.
+- [ ] Failures are recorded safely.
 - [ ] Normal request handling and deployment remain functional.
-
-Complete Stage 10's implementation and add its tests before moving to Stage 11. Run the consolidated test suite after Batch 4.
 
 ## 16. Stage 11 — End-to-end verification
 
@@ -774,15 +768,19 @@ The public site is a Brilina Dev platform landing page, not a default sign-in sc
 - [ ] Auth callback, password-reset redirect, and allowed redirect URLs use the exact Forge production hostname.
 
 
-## 19. Four implementation batches for the eleven stages
+## 19. Sequential implementation order and batch gates
 
-The work now contains **eleven numbered stages**, including the Agent Workflow System as Stage 5 immediately after conversation persistence. The user requested that this new module be delivered in Batch 4, so Batch 4 intentionally implements Stage 5 after the foundational stages and existing provider/storage stages are ready; Stage numbers describe the dependency/module map, while this batch assignment is the approved delivery grouping. For execution efficiency, group those stages into four implementation batches; this grouping does not add stages or change their required order. Before each batch, provide a concise preflight summary of design, affected files, assumptions, risks, and tests. Implement the batch's stages in order, finish their local verification, and then proceed to the next batch. After all four batches, run the full end-to-end test pass in Stage 11. Do not deploy or begin GitHub integration without separate explicit approval.
+The eleven numbered stages remain product requirements, not a statement that every stage is pending. Before implementation, audit current source, tests, migrations, and live evidence. **Do not reimplement Foundation Batch 1 by default:** current `main` already contains Tavily aggregate bounds, protected chat/transcription route checks, and four Supabase migrations. Confirm exact gaps and live acceptance before deciding what remains.
 
-| Batch | Included stages | Main outcome |
+Delivery order is sequential; do not run parallel implementation workstreams:
+
+| Phase | Scope | Gate |
 |---|---|---|
-| Batch 1 | Stage 1–3 | Tavily aggregate cap; Supabase schema/RLS foundation; authenticated owner-managed access, MFA, password lifecycle, and protected transcription |
-| Batch 2 | Stage 4 and Stages 6–7 | Conversation/message persistence; private Supabase Storage; working attachment drawer and upload flow |
-| Batch 3 | Stages 8–10 | External vision provider; PDF then TXT/DOCX processing; Supabase keep-alive cron |
-| Batch 4 | Stage 5 and Stage 11, plus acceptance fixes | Agent Workflow System, full end-to-end test run, security/quota checks, build/typecheck/lint, and resolution of discovered regressions |
+| A | Consolidate documentation and align runtime assumptions with `docs/NEXT_PHASE_PLAN.md` | Docs-only diff reviewed; CI checked |
+| B | Audit prior Foundation Batch 1 and all later stages against current source/tests/live evidence | Evidence matrix; exact gaps agreed; no duplicate implementation |
+| C | Compare Cloud Run vs Cloud Functions (and retained Cloudflare responsibilities), including compatibility, streaming, cost, secrets, and rollback | Written architecture decision approved before provisioning |
+| D | Implement the chosen runtime foundation and migrate one evidence-selected workload at a time | Build/tests and preview smoke tests pass; rollback verified |
+| E | Close verified product gaps in dependency order: auth/RLS acceptance, conversation persistence, private storage/attachments, vision, PDF then TXT/DOCX, justified keep-alive, email provider verification | Each feature passes its own tests and acceptance before next |
+| F | Implement the Agent Workflow System using one approved workflow engine; finish end-to-end acceptance | State/retry/recovery/RLS tests pass; CI and live tests reported separately |
 
-Stage 11 is the eleventh and final stage. Batch 4 includes the Agent Workflow System (Stage 5, intentionally delivered in Batch 4 per the user's instruction) and final verification. Domain and public landing-page work must be planned explicitly alongside deployment/setup decisions after the exact domain is confirmed. GitHub integration stays out of scope until all eleven stages pass and the user approves moving to that work.
+Stage 5 (Agent Workflow System) remains dependent on stable runtime, auth, and persistence. The final acceptance stage covers the entire application. Do not deploy, alter production DNS, apply live migrations, or begin GitHub integration without separate explicit approval.
