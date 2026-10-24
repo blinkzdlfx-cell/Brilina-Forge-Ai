@@ -33,11 +33,11 @@ This document retains the approved product requirements for the application foun
 - Keep the Supabase service-role key and all provider secrets server-side.
 - Do not implement GitHub integration in this phase. Keep core database tables general so later integrations can add separate tables without changing the core schema. Preserve existing UI and features unless a stage explicitly changes their behavior.
 - No public sign-up, invitation codes, or invite links. The owner creates accounts from the owner-only admin screen.
-- Batch 1 implementation is approved. Later batches require their own preflight and explicit approval before implementation.
+- Historical approval note: Batch 1 was previously approved. This line does not establish current completion status; use the current source and the small-batch approval rule at the top of this document.
 
 ## 2. Original repository baseline (historical; re-verify against current main)
 
-The current `main` branch contains:
+The original audited `main` baseline contained the following components (re-verify current behavior before relying on this inventory):
 
 - `app/api/chat/route.ts`: AI SDK streaming chat endpoint, bounded request/context handling, model selection, image validation, and tool execution.
 - `app/api/transcribe/route.ts`: audio upload validation and Cloudflare Workers AI Whisper transcription.
@@ -144,17 +144,17 @@ Admin functions:
 
 Admin list/actions must use server-side privileged operations. Validate inputs and avoid returning tokens, password values, secrets, or raw provider errors.
 
-### 4.5 Passwords and Brevo SMTP
+### 4.5 Passwords and email delivery
 
 - Users can change their password while signed in.
 - Users can request an email password reset and complete the reset flow.
 - Customize the Supabase password-reset email template.
-- Configure Brevo as the custom SMTP provider under Supabase Authentication SMTP settings.
-- Document and verify a sender address or domain, SPF and DKIM records, and any sender verification required by Brevo.
-- Store SMTP credentials only in Supabase settings. Never put them in frontend code, source control, `.env.example`, Worker variables, logs, or API responses.
+- The original setup plan used Brevo as Supabase custom SMTP. Resend is the intended replacement direction, but the exact delivery configuration remains unverified and must be decided before changing provider settings.
+- Verify the selected provider's supported Supabase Auth SMTP/custom-email arrangement, sender/domain verification, SPF/DKIM requirements, quotas, and costs using current official documentation.
+- Store email-provider credentials only in the provider/Supabase settings that require them. Never put them in frontend code, source control, `.env.example`, Worker variables, logs, or API responses.
 - Password reset requests should use generic success responses to avoid account enumeration.
 
-Brevo setup checklist:
+Historical Brevo setup checklist (do not treat as proof of current configuration):
 
 - [ ] Sender email/domain is verified.
 - [ ] SPF is configured correctly.
@@ -302,7 +302,7 @@ Complete Stage 1's implementation and add its tests before moving to Stage 2. Ru
 
 **Voice recording limit:** cap each browser recording at **15 minutes maximum**. Do not display a recording timer or countdown in the frontend. Enforce the 15-minute maximum using a server-controlled recording session and timestamp. The recording/upload protocol must allow the server to detect the limit and finalize/auto-transcribe at 15 minutes; if the existing upload-after-stop protocol cannot support server-side auto-finalization, design the smallest secure chunk/session protocol needed. Insert the transcript into the composer without automatically sending the chat message. Manual Stop/Send behavior before the limit remains available. Prevent further recording beyond 15 minutes, handle upload/transcription failures without losing the user's draft where feasible, and test server-side duration enforcement and boundary behavior. The server must independently enforce a maximum audio duration where the format/provider permits reliable validation, plus a conservative upload byte limit and request timeout; a client-side timer alone is not a security control.
 
-**Scope:** implement email/password sign-in, owner-only admin with TOTP MFA, forced first password change, password change/reset, immediate revocation, and Brevo SMTP setup documentation.
+**Original Stage 3 scope (historical plan):** email/password sign-in, owner-only admin with TOTP MFA, forced first password change, password change/reset, immediate revocation, and email-delivery setup. Much of the authentication behavior now exists; inspect current source and live behavior before proposing changes. Email-provider migration remains separately unverified.
 
 **Likely files to add/change, after inspecting current conventions and installed SDK versions:**
 
@@ -334,7 +334,7 @@ Before coding, verify compatibility with the repository's Next.js 16, React 19, 
 9. Revocation sets `disabled = true`, attempts a supported Supabase ban as defense in depth, and blocks every protected request through a fresh DB access check. The sign-in flow must reject disabled users and must not retain an app session for them.
 10. Restore clears `disabled` and reverses the ban if used. Delete removes the Auth user and cascades related app data according to the schema.
 11. Setting a temporary password uses the Admin API, marks `must_change_password = true`, and does not return or log the password.
-12. Password reset emails use Supabase Auth configured with Brevo SMTP.
+12. Password reset emails use the currently verified Supabase Auth delivery configuration. Do not assume Brevo or Resend is active until dashboard settings and live mailbox tests confirm it.
 
 **Assumptions:** Supabase Auth owns user identity; trusted owner role is in `app_metadata`; `user_access` is the authoritative immediate-revocation and forced-password-change source. If the Supabase ban API cannot provide a suitable long ban, application sign-in and every protected API must still enforce the authoritative disabled state.
 
@@ -734,7 +734,7 @@ Add only the variables required by each completed stage. Names below are propose
 - `GEMINI_API_KEY` — server-only document provider.
 - Existing `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AI_API_TOKEN`, `TAVILY_API_KEY`, and `VOICE_TRANSCRIPTION_ENABLED`.
 
-Never add Brevo SMTP credentials to this list of application variables: they belong only in Supabase Authentication SMTP settings. Never commit real secret values. `.env.example` contains names and blank placeholders only. The service-role key must not be used in browser code and should be avoided for normal user-scoped database operations.
+Never add SMTP credentials to this list of application variables: keep them only in the selected provider/Supabase delivery settings that require them. Never commit real secret values. `.env.example` contains names and blank placeholders only. The service-role key must not be used in browser code and should be avoided for normal user-scoped database operations.
 
 ## 18. Mandatory stage workflow
 
