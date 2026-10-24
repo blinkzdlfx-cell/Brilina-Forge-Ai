@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/input-group"
 
 const MAX_RECORDING_BYTES = 20 * 1024 * 1024
-const MAX_RECORDING_MS = 15 * 60 * 1000
+const MAX_RECORDING_MS = 10 * 60 * 1000
 const AUTO_STOP_MARGIN_MS = 1000
 const TRANSCRIPTION_TIMEOUT_MS = 45_000
 const MAX_IMAGE_COUNT = 3
@@ -336,7 +336,7 @@ export function PromptForm({
       startWaveform(stream)
       const startedAt = Date.now()
       // Stop slightly before the server deadline so finalization reaches the
-      // server within the 15-minute window. No timer is rendered in the UI.
+      // server within the 10-minute window. No timer is rendered in the UI.
       recordingTimerRef.current = setInterval(() => {
         const elapsed = Date.now() - startedAt
         if (elapsed >= MAX_RECORDING_MS - AUTO_STOP_MARGIN_MS) finalizeRecording("insert")
