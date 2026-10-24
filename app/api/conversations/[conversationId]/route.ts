@@ -1,4 +1,5 @@
 import { requireUser } from "@/lib/auth/require-user"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 type RouteContext = { params: Promise<{ conversationId: string }> }
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -84,13 +85,27 @@ export async function DELETE(_request: Request, context: RouteContext) {
   const { conversationId } = await context.params
   if (!UUID_PATTERN.test(conversationId)) return Response.json({ error: "conversation_not_found" }, { status: 404 })
 
-  const { data, error } = await auth.supabase
-    .from("conversations")
-    .delete()
-    .eq("id", conversationId)
-    .eq("user_id", auth.user.id)
-    .select("id")
-    .maybeSingle()
-  if (error || !data) return Response.json({ error: "conversation_delete_failed" }, { status: 404 })
+  const { data: ownedConversation, error: ownerError } = await auth.supabase
+    .from("conversations").select("id").eq("id", conversationId).eq("user_id", auth.user.id).maybeSingle()
+  if (ownerError || !ownedConversation) return Response.json({ error: "conversation_not_found" }, { status: 404 })
+
+  const admin = createAdminClient()
+  const { data: files, error: filesError } = await admin.from("files")
+    .select("id, bucket_id, storage_path").eq("conversation_id", conversationId).eq("user_id", auth.user.id)
+  if (filesError) return Response.json({ error: "conversation_files_unavailable" }, { status: 500 })
+  for (const bucketId of [...new Set((files ?? []).map((file) => file.bucket_id))]) {
+    const paths = (files ?? []).filter((file) => file.bucket_id === bucketId).map((file) => file.storage_path)
+    if (paths.length) {
+      const { error: storageError } = await admin.storage.from(bucketId).remove(paths)
+      if (storageError) return Response.json({ error: "conversation_files_delete_failed" }, { status: 502 })
+    }
+  }
+  if ((files ?? []).length) {
+    const { error: metadataError } = await admin.from("files").delete().eq("conversation_id", conversationId).eq("user_id", auth.user.id)
+    if (metadataError) return Response.json({ error: "conversation_files_delete_failed" }, { status: 500 })
+  }
+  const { data, error } = await auth.supabase.from("conversations").delete()
+    .eq("id", conversationId).eq("user_id", auth.user.id).select("id").maybeSingle()
+  if (error || !data) return Response.json({ error: "conversation_delete_failed" }, { status: 500 })
   return Response.json({ success: true, id: data.id })
 }

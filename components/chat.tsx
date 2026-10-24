@@ -90,10 +90,11 @@ export function Chat({ models }: { models: GatewayModel[] }) {
 
   React.useEffect(() => {
     let cancelled = false
-    void fetch("/api/conversations").then(async (response) => {
-      if (!response.ok) return
-      const payload = await response.json() as { conversations?: typeof conversations }
-      if (!cancelled) setConversations(payload.conversations ?? [])
+    Promise.all([fetch("/api/conversations"), fetch("/api/conversations?archived=true")]).then(async ([activeResponse, archivedResponse]) => {
+      if (!activeResponse.ok) return
+      const active = await activeResponse.json() as { conversations?: typeof conversations }
+      const archived = archivedResponse.ok ? await archivedResponse.json() as { conversations?: typeof conversations } : { conversations: [] }
+      if (!cancelled) setConversations([...(active.conversations ?? []), ...(archived.conversations ?? [])])
     }).catch(() => undefined)
     return () => { cancelled = true }
   }, [])
@@ -253,14 +254,14 @@ export function Chat({ models }: { models: GatewayModel[] }) {
     const timer = setTimeout(() => {
       void fetch("/api/conversations/" + encodeURIComponent(conversationId) + "/messages", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: messages.map((m) => ({ id: m.id, role: m.role, parts: m.parts, status: "complete" })) }), signal: controller.signal,
+        body: JSON.stringify({ messages: messages.map((m) => ({ id: m.id, role: m.role, parts: m.parts, status: error && m.role === "assistant" && m.id === messages.at(-1)?.id ? "interrupted" : "complete" })) }), signal: controller.signal,
       }).then(async (response) => {
         if (!response.ok) { setConversationNotice("Conversation history could not be saved. An attachment may need secure upload first."); return }
         await refreshConversations()
       }).catch(() => undefined)
     }, 300)
     return () => { clearTimeout(timer); controller.abort() }
-  }, [status, conversationId, messages, refreshConversations])
+  }, [status, conversationId, messages, error, refreshConversations])
   const updateConversation = React.useCallback(async (id: string, patch: Record<string, unknown>) => {
     const response = await fetch("/api/conversations/" + encodeURIComponent(id), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) })
     if (!response.ok) throw new Error("Could not update this conversation.")
