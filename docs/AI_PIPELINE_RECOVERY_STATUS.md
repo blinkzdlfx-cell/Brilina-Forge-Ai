@@ -1,32 +1,41 @@
-# AI Pipeline Recovery Status
+# AI Pipeline Recovery Status — Historical Notes
+
+**Status authority for the next phase:** `docs/NEXT_PHASE_PLAN.md`  
+**Repository:** `blinkzdlfx-cell/Brilina-Forge-Ai`  
+**Current main baseline reviewed:** `ee35aaef5dae79d4ab7fb695b9f3f1e133f47ea5` (2026-10-24)
+
+This file preserves useful notes from recovery of an AI-pipeline plan that had previously been applied to the wrong repository. Its dated implementation checkpoints below are historical snapshots, not a reliable statement of current completion status. Re-check current `main`, CI, deployment status, and live behavior before using them to authorize work.
 
 ## Repository correction
 
-The prior AI pipeline plan and implementation were accidentally committed to `blinkzdlfx-cell/brilina-forge`. That repository is not the correct application. The correct repository is `blinkzdlfx-cell/Brilina-Forge-Ai`, a Next.js 16 + AI SDK v7 + OpenNext Cloudflare Worker app. Do not copy source files mechanically between these repositories.
+The intended application repository is `blinkzdlfx-cell/Brilina-Forge-Ai`, a Next.js 16 + AI SDK + OpenNext Cloudflare Worker app. Earlier pipeline changes in `blinkzdlfx-cell/brilina-forge` must not be copied mechanically into this repository because its integration points differ.
 
-## Source audit at recovery start
+## Architecture observations from the original recovery
 
-Correct repository `main` was at `3609467a88839152f4a95ec31be71693920d5578` (2026-10-21).
+- The chat route used AI SDK streaming APIs and the frontend used `useChat`; preserve native end-to-end streaming rather than buffering a complete response and faking chunks.
+- Tavily is integrated through `tools/web_search.ts` and `lib/tavily-search.mjs`. Do not replace or duplicate it without evidence.
+- The application has existing chat tools, bounded request/context handling, image support/configuration, and redacted diagnostic helpers. Verify their exact current implementation before changing them.
+- Worker CPU time, wall-clock time, provider latency, payload size, and provider errors are separate signals. Do not diagnose CPU exhaustion from elapsed time alone.
+- No historical CI result in this file proves the current production deployment or live provider/browser acceptance.
 
-- `app/api/chat/route.ts` already uses `streamText`, `toUIMessageStream`, `createUIMessageStreamResponse`, request abort signal, and a maximum of four tool steps. It has a declared 48 KiB request bound, six-message history selection, 24 parts/message, 4096 output-token limit, and redacted stage diagnostics. These are existing controls to validate, not evidence every requirement is satisfied.
-- `components/chat.tsx` uses AI SDK `useChat`, forwards model choice, and calls `stop()` for a new chat while a request is active.
-- `tools/web_search.ts` calls the existing `lib/tavily-search.mjs`; preserve it untouched through Batches 1 and 2.
-- `tools/github_repo.ts` and `tools/ask_user.ts` are existing tools; preserve their contract.
-- Existing automated tests cover Tavily only. There is no route/stream contract suite visible in `tests/` at audit start.
-- Current model configuration only exposes Cloudflare Workers AI `@cf/zai-org/glm-4.7-flash`. No image attachment path or Groq vision configuration has been confirmed.
-- `wrangler.jsonc` has the Workers AI binding and observability enabled. Do not change deployment configuration for this work.
+## Historical batch checkpoints
 
-## Batch 1 checkpoint
+The original recovery plan grouped work into:
+1. Native streaming and stream-contract verification.
+2. Context bounds, reliability, observability, and image intelligence.
+3. Tavily integration hardening.
 
-The existing architecture is already streaming-first at source level. Batch 1 must add useful regression coverage and fix only demonstrated defects, rather than reimplement streaming. No live provider or browser test is claimed unless separately performed.
+Earlier notes reported CI runs and code changes for these batches, but also recorded that production deployment and live provider/browser testing had not been performed at that time. Those historical statements must not be treated as current status.
 
-## Wrong-repository changes not to transplant blindly
+See:
+- `docs/AI_PIPELINE_REQUIREMENTS.md` for reusable pipeline requirements and test categories.
+- `docs/AI_PIPELINE_BATCH_PLAN.md` for the historical batch design.
+- `docs/NEXT_PHASE_PLAN.md` for the current planned work: evidence-led CPU investigation, external-compute decision, incremental workload migration, and the Agent Workflow System.
 
-The other repository's Batch 1 used custom provider/controller/Worker streaming layers absent here. Its Batch 2 included head/tail tool-result truncation and retry wrappers, but those APIs do not match this application's AI SDK route and tools. Reimplement the requirements at the correct integration points and retain only applicable ideas.
+## Rules for future work
 
-## Status
-- Recovery docs: recovered and adapted in `docs/AI_PIPELINE_REQUIREMENTS.md` and `docs/AI_PIPELINE_BATCH_PLAN.md`.
-- Batch 1: existing native streaming path preserved; added first-text-chunk, normal completion (finish reason and usage), and abort lifecycle diagnostics in `app/api/chat/route.ts`. Added `tests/chat-streaming-contract.test.mjs`. CI run `39687303526` passed unit tests (9 total), lint, typecheck, and Cloudflare Worker build. The first typecheck correctly caught an AI SDK event-type mismatch; it was fixed from `text` to `text-delta` and the final run passed. Live-provider/browser acceptance was not performed.
-- Batch 2: implemented bounded streamed request-body parsing (5 MiB app limit), six-message/32,000-character context budget, per-message/part bounds, PNG/JPEG/WebP image validation (1 MiB/image, 3 MiB total), provider-aware vision routing, image upload/preview/removal, safe retry/timeouts, and redacted lifecycle diagnostics. CI on commit `5bf86bfbd80ec826147b4e3d885118965955ba61` passed tests, lint, typecheck, and Cloudflare build. A subsequent diagnostic-redaction change is awaiting CI. No live-provider/browser test yet.
-- Batch 3 (Tavily): implementation now in progress after Batch 2 CI passed; changes are limited to the existing Tavily path and its regression tests.
-- Production deployment: not performed.
+- Start from current `main) and inspect the actual source before editing.
+- Preserve existing UI, provider contracts, and working behavior unless a verified defect requires a change.
+- Keep changes on a review branch and complete one small batch before starting another.
+- Do not provision services, add dependencies, alter schemas, configure secrets, or deploy to production without explicit approval.
+- Record changed files, commit SHA, CI evidence, deployment evidence, manual tests, and unverified items separately.
