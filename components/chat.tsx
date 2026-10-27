@@ -6,6 +6,8 @@ import { useChat } from "@ai-sdk/react"
 import { lastAssistantMessageIsCompleteWithToolCalls } from "ai"
 
 import { type GatewayModel } from "@/lib/models"
+import { CogIcon } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
 import { uploadPrivateFile } from "@/lib/direct-upload"
 import { type ChatUIMessage } from "@/tools"
 import { ChatMessage } from "@/components/chat-message"
@@ -67,6 +69,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
   const [model, setModel] = React.useState(models[0]?.id ?? "")
   const [conversationId, setConversationId] = React.useState<string | null>(null)
   const [conversationsLoading, setConversationsLoading] = React.useState(true)
+  const [conversationLoading, setConversationLoading] = React.useState(Boolean(initialConversationId))
   const [pendingAttachmentMessage, setPendingAttachmentMessage] = React.useState<{ text: string; files: File[]; stage: string } | null>(null)
   const [conversations, setConversations] = React.useState<Array<{ id: string; title: string; is_pinned: boolean; archived_at: string | null; updated_at: string }>>([])
   const [showArchived, setShowArchived] = React.useState(false)
@@ -271,6 +274,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
   }, [isBusy, setMessages, stop])
   const openConversation = React.useCallback(async (id: string) => {
     if (isBusy) stop()
+    setConversationLoading(true)
     try {
       const response = await fetch("/api/conversations/" + encodeURIComponent(id))
       const payload = await response.json() as { messages?: ChatMessageType[] }
@@ -280,11 +284,13 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
       window.history.replaceState(null, "", "/c/" + encodeURIComponent(id))
       setMessages(payload.messages)
       setConversationNotice("")
-    } catch (cause) { setConversationNotice(cause instanceof Error ? cause.message : "Could not load this conversation.") }
+      setConversationLoading(false)
+    } catch (cause) { setConversationNotice(cause instanceof Error ? cause.message : "Could not load this conversation."); setConversationLoading(false) }
   }, [isBusy, setMessages, stop])
   React.useEffect(() => {
     if (!initialConversationId) return
     let cancelled = false
+    setConversationLoading(true)
     fetch("/api/conversations/" + encodeURIComponent(initialConversationId)).then(async (response) => {
       const payload = await response.json() as { messages?: ChatMessageType[] }
       if (!response.ok || !payload.messages) throw new Error("Could not load this conversation.")
@@ -292,7 +298,8 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
       conversationIdRef.current = initialConversationId
       setConversationId(initialConversationId)
       setMessages(payload.messages)
-    }).catch((cause) => { if (!cancelled) setConversationNotice(cause instanceof Error ? cause.message : "Could not load this conversation.") })
+      setConversationLoading(false)
+    }).catch((cause) => { if (!cancelled) { setConversationNotice(cause instanceof Error ? cause.message : "Could not load this conversation."); setConversationLoading(false) } })
     return () => { cancelled = true }
   }, [initialConversationId, setMessages])
   React.useEffect(() => {
@@ -347,12 +354,27 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
             title="Toggle sidebar"
           />
           <div className="pointer-events-auto ml-auto min-w-0 max-w-[calc(100vw-5.75rem)] sm:max-w-none">
-            <ChatHeaderControls models={models} model={resolvedModel} onModelChange={setModel} onNewChat={startNewChat} />
+            <ChatHeaderControls
+              models={models}
+              model={resolvedModel}
+              onModelChange={setModel}
+              onNewChat={startNewChat}
+              activeConversation={conversations.find((item) => item.id === conversationId) ?? null}
+              onRenameConversation={(title) => { if (conversationId) void updateConversation(conversationId, { title }).catch((cause) => setConversationNotice(cause.message)) }}
+              onPinConversation={() => { const item = conversations.find((entry) => entry.id === conversationId); if (item) void updateConversation(item.id, { is_pinned: !item.is_pinned }).catch((cause) => setConversationNotice(cause.message)) }}
+              onArchiveConversation={() => { const id = conversationId; if (id) void updateConversation(id, { archived: true }).then(startNewChat).catch((cause) => setConversationNotice(cause.message)) }}
+              onDeleteConversation={() => { if (conversationId) void deleteConversation(conversationId) }}
+            />
           </div>
         </div>
 
         <div className="mx-auto flex min-h-0 w-full flex-1 flex-col overflow-hidden">
-          {messages.length === 0 && !pendingAttachmentMessage ? (
+          {conversationLoading ? (
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-6" role="status" aria-label="Loading conversation">
+              <CogIcon className="size-8 animate-spin text-muted-foreground" />
+              <div className="w-full max-w-sm space-y-3"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-full" /><Skeleton className="h-16 w-2/3 rounded-2xl" /></div>
+            </div>
+          ) : messages.length === 0 && !pendingAttachmentMessage ? (
             <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-6">
               <Empty>
                 <EmptyHeader>
