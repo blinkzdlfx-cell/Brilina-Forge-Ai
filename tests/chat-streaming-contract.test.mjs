@@ -35,3 +35,10 @@ test("the route retains bounded tool turns and output tokens", () => {
   assert.match(route, /const MAX_TOOL_STEPS = 4/)
   assert.match(route, /stopWhen:\s*isStepCount\(MAX_TOOL_STEPS\)/)
 })
+
+test("attachment preparation prevents duplicate submissions and cleans up after network failures", () => {
+  assert.match(chat, /sendPreparationRef\.current/)
+  assert.match(chat, /finally\s*\{\s*sendPreparationRef\.current = false/)
+  assert.match(chat, /connection was interrupted while processing/)
+  assert.match(chat, /method: "DELETE"/)
+})
