@@ -154,3 +154,7 @@ Never deploy to production, change DNS, alter production secrets, apply live Sup
 - `docs/architecture/INVITED_USER_LIMITS.md`: future design only unless explicitly approved as implementation scope.
 
 When documents conflict, preserve the user's current approved architecture and verify source before changing code. Update the owning document rather than creating competing plans.
+
+## UI interaction batch — branch under verification
+
+Branch: `feat/chat-attachments-actions-sidebar-profile` (not merged). This batch combines attachment bubble/progress UX, the plus attachment menu, conversation deep links and refresh restoration, user/assistant message actions, sidebar menus and collapsed controls, shimmer/gear loading states, and profile settings/photo upload. Existing private-storage size/MIME limits and invite-only access remain in force. CI and preview/manual acceptance must pass before merging; no production deployment or schema migration is included.
