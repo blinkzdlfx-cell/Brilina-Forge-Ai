@@ -51,6 +51,12 @@ export async function POST(request: Request) {
   }
 
   const admin = createAdminClient()
+  const { data: existing, error: existingError } = await admin.from("files")
+    .select("id, original_name, mime_type, size_bytes, status, created_at")
+    .eq("user_id", auth.user.id).eq("bucket_id", BUCKET).eq("storage_path", storagePath).maybeSingle()
+  if (existingError) return Response.json({ error: "file_metadata_unavailable" }, { status: 500 })
+  if (existing) return Response.json({ file: existing }, { status: 200, headers: { "Cache-Control": "no-store" } })
+
   const { data: object, error: downloadError } = await admin.storage.from(BUCKET).download(storagePath)
   if (downloadError || !object) return Response.json({ error: "uploaded_object_not_found" }, { status: 404 })
   if (object.size !== size || object.size > MAX_FILE_BYTES) {
