@@ -2,12 +2,12 @@
 
 **Repository:** `blinkzdlfx-cell/Brilina-Forge-Ai`  
 **Application branch:** `main`  
-**Current runtime:** Next.js 16, React 19, AI SDK, OpenNext on Cloudflare Workers  
+**Current production runtime:** Vercel (Next.js 16, React 19, AI SDK); the Cloudflare Worker remains a retained fallback and Cloudflare Workers AI is called over HTTPS  
 **Last reconciled against main:** `ee35aaef5dae79d4ab7fb695b9f3f1e133f47ea5` (2026-10-24)  
 **Status:** Product/stage requirements, not a live implementation tracker. Verify each stage against current source, automated tests, live migration state, and acceptance evidence.  
-**Execution rule:** Small sequential batches only. No production deployment or GitHub integration without separate explicit approval.
+**Execution rule:** Four substantial sequential batches. Complete implementation and comprehensive verification for each batch before progressing. No production deployment or GitHub integration without separate explicit approval.
 
-This document retains product requirements and acceptance criteria. **Runtime/hosting authority is `docs/NEXT_PHASE_PLAN.md`**: the current Cloudflare deployment is the baseline, not a decision to keep the full app on Cloudflare. Evaluate Google Cloud Run vs Google Cloud Functions and make a complete runtime decision before implementation. Do not duplicate already-present Batch 1 code.
+This document retains product requirements and acceptance criteria. **Runtime/hosting authority is `docs/NEXT_PHASE_PLAN.md`**: Vercel is the primary production application runtime, the existing Cloudflare Worker remains a fallback, and Cloudflare Workers AI continues to be called over HTTPS where configured. Preserve existing working code and do not duplicate already-implemented functionality.
 
 ## Status and verification rules
 
@@ -21,11 +21,11 @@ This document retains product requirements and acceptance criteria. **Runtime/ho
 
 - Personal project; prioritize free tiers and handle quotas, pauses, and provider failures clearly.
 - Keep the existing React/Next.js UI and integrate with it. Do not rebuild the application.
-- Current provider/runtime placement is a baseline, not an immutable decision. Follow `docs/NEXT_PHASE_PLAN.md` for the Google Cloud Run vs Google Cloud Functions architecture review; preserve provider behavior unless the approved architecture decision explicitly changes it.
+- Vercel is the primary production application runtime. Preserve the existing Cloudflare Worker as a fallback and Cloudflare Workers AI as an external API provider where configured. Keep the native Next.js build and the retained Worker build independently verifiable.
 - Use Supabase for PostgreSQL, Auth, and private Storage. The original fresh-project assumption is historical; verify current live schema, data, buckets, Auth settings, and migration application state before any migration or reset.
 - Use an external hosted vision provider, starting with Groq if its model availability and free limits fit.
 - Use a document-capable external provider for PDFs, with Gemini as the initial candidate if its free allocation and limits fit.
-- Keep Tavily, retaining its existing protections and adding a 4,000-character aggregate excerpt budget.
+- Keep Tavily as the existing primary search provider and preserve its current protections, including the 4,000-character aggregate excerpt budget. DuckDuckGo may be evaluated only as an additive source after verifying its official API capability; do not replace Tavily or assume its Instant Answer API is a complete web-search API.
 - Do not add image generation.
 - Upload files to Supabase Storage and pass authorized file references through chat requests. Never put file base64 data in chat requests.
 - Resize and compress images in the browser before upload.
@@ -66,21 +66,17 @@ Current constraints and cautions:
 
 ## 3. Target architecture
 
-- **Frontend:** existing Next.js/React chat UI and shadcn-style components.
-- **Application gateway:** Cloudflare Workers via OpenNext.
-- **Text generation:** Cloudflare Workers AI.
-- **Search:** Tavily, with strict response and aggregate-context budgets.
-- **Vision:** external hosted provider, initially Groq if suitable.
-- **Documents:** external document-capable provider, initially Gemini if suitable.
-- **Database:** Supabase PostgreSQL.
-- **Identity and sessions:** Supabase Auth.
-- **Files:** private Supabase Storage bucket.
-- **Scheduled activity check:** Cloudflare Cron Trigger calling a lightweight Supabase endpoint/query.
-- **No R2, no Neon, and no image-generation provider.**
+- **Primary application runtime:** Vercel Hobby, using the native Next.js runtime and its documented execution, payload, memory, usage, and acceptable-use limits.
+- **Fallback:** the existing Cloudflare Worker deployment remains available; do not remove it or route ordinary Vercel requests through it without a specific reason.
+- **AI inference:** existing Cloudflare Workers AI API for text and Whisper transcription where configured; Groq for configured vision models; Gemini for PDF extraction where configured.
+- **Search:** Tavily remains the existing primary provider. Evaluate DuckDuckGo only as an optional additive provider after checking its official API's actual capability, terms, and reliability.
+- **Database and identity:** Supabase PostgreSQL and Auth.
+- **Files:** private Supabase Storage, with user-owned file metadata, short-lived signed URLs where necessary, and upload-first references.
+- **Streaming:** preserve native AI SDK streaming from `streamText` through UI-message stream conversion to the `useChat` client. Buffer only partial protocol frames or required state; never wait for the complete answer and simulate streaming.
+- **Optional background work:** choose a single durable workflow/queue mechanism only in Batch 4 after verifying the workload and current Vercel/Cloudflare limits. Do not introduce infrastructure solely because it is mentioned as a possibility.
+- **No R2, no Neon, and no image-generation provider.** Do not implement GitHub integration in this scope.
 
-Normal text messages should stay on Cloudflare Workers AI. Vision and document operations are routed to their dedicated provider; the Worker authenticates the user, verifies file ownership, routes the request, and streams/returns the result. Tavily output is bounded before it is included in the model context.
-
-Use server-side provider modules so the chat route does not accumulate provider-specific parsing and error-handling logic. Do not assume an external provider can access a private Supabase object directly; select between short-lived signed access and provider-side file upload based on the provider's supported API. Signed URLs must expire and must not be persisted as durable file identifiers.
+Vercel Functions document a 4.5 MB request/response payload limit. The existing server routes allow 10 MiB files and 20 MiB audio, so application limits alone do not ensure Vercel will accept those requests. Large uploads must use a verified authenticated direct-to-private-Supabase-Storage flow or another tested path that avoids sending oversized binary payloads through a Vercel Function. Server routes must verify file ownership before processing and accept compact references where possible.
 
 ## 4. Security and access model
 

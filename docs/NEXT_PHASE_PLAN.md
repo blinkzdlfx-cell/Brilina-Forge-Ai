@@ -1,149 +1,148 @@
-# Brilina Forge AI — Consolidated Architecture and Implementation Plan
+# Brilina Forge AI — Consolidated Architecture and Four-Batch Execution Plan
 
-**Status:** Planning and audit only. This document does not authorize provisioning, secret changes, schema changes, or production deployment.  
 **Repository:** `blinkzdlfx-cell/Brilina-Forge-Ai`  
-**Application baseline reviewed:** `main` at `ee35aaef5dae79d4ab7fb695b9f3f1e133f47ea5` (2026-10-24)  
-**Current deployment:** Cloudflare Worker `brilina-forge-ai` — `https://brilina-forge-ai.blinkzdlfx.workers.dev`  
+**Production application:** Vercel — `https://brilina-forge-ai.vercel.app`  
+**Custom domain target:** `https://forge.brilinadev.name.ng`  
+**Retained fallback:** Cloudflare Worker `brilina-forge-ai` — `https://brilina-forge-ai.blinkzdlfx.workers.dev`  
 **Supabase project:** `jjocynbtuafdokkjemym`  
-**Execution rule:** One coordinated workstream. Complete each gated phase, report evidence, and obtain approval before implementation beyond the approved scope. No production deployment without separate explicit approval.
+**Plan status:** Execution roadmap; no production deployment, DNS changes, secret changes, or live database migrations are authorized by this document.
 
-This is the controlling roadmap for architecture, reliability, the existing foundation, and the future Agent Workflow System. `docs/IMPLEMENTATION_SPEC.md` remains the product requirements catalogue, but its older Cloudflare-specific runtime assumptions are subordinate to the architecture decision in this plan.
+This document is the controlling execution plan. `docs/IMPLEMENTATION_SPEC.md` remains the product requirements catalogue. `docs/VERCEL-FIRST-DEPLOYMENT-PLAN.md` provides the Vercel-specific deployment notes; its earlier seven-step compatibility outline is superseded by the four substantial batches below. The AI pipeline requirements remain authoritative for streaming, bounds, provenance, cancellation, retries, and redacted diagnostics.
 
-## 1. Audit findings — Batch 1 must not be rebuilt by default
+## 1. Architecture decision
 
-Source inspection of current `main` found:
+Vercel is the primary production application runtime. The existing Cloudflare Worker deployment remains available as a fallback until the Vercel application and its required workflows are verified. Do not route ordinary Vercel application requests through the old Worker unless a specific, documented Cloudflare service is intentionally being called.
 
-- **Tavily guardrails:** `lib/tavily-search.mjs` already has a five-result cap, 1,200-character per-excerpt cap, 4,000-character aggregate excerpt cap, 128 KiB response bound, URL normalization/deduplication, bounded retry handling, and safe errors.
-- **Protected chat:** `app/api/chat/route.ts` calls `requireUser` and bounds request/context/tool work.
-- **Protected transcription:** `app/api/transcribe/route.ts` calls `requireUser`; it currently uses Cloudflare Workers AI Whisper and source-level limits of 20 MiB audio and a 10-minute recording session.
-- **Database foundation:** migrations `0001_initial_schema.sql`, `0002_voice_recording_sessions.sql`, `0003_secure_application_diagnostics.sql`, and `0004_diagnostic_lifecycle.sql` exist in the repository.
-- **Runtime coupling:** `lib/runtime-env.ts` reads Cloudflare bindings and falls back to `process.env`; the transcription route imports OpenNext/Cloudflare context directly. These are concrete migration touchpoints, not proof the whole app must be rewritten.
-- **Existing auth/security:** Supabase auth integration, owner administration, MFA/AAL2 checks, and secure diagnostic handling are present in the source/docs. The owner confirmed password recovery works after the MFA/AAL2 recovery fix; do not redesign it without a demonstrated defect.
-- **What is not verified:** repository migration files do not prove they were applied to the live Supabase project; source-level auth does not prove live account/RLS/MFA/revocation acceptance; CI does not prove live provider/browser behavior or deployment state. Conversation persistence, private file storage, document processing, and workflow status require a source-and-live-evidence audit before being classified as complete or pending.
+- **Vercel Hobby:** Next.js 16 / React 19 application and server routes. Respect the current plan's execution, request/response, memory, usage, and acceptable-use restrictions. The Vercel-native `pnpm build` is a required CI check; the OpenNext Worker build remains a separate compatibility check.
+- **Cloudflare Workers AI:** keep existing model calls over the Cloudflare API where configured and useful. The Vercel app must not depend on Cloudflare-only request bindings to call these APIs.
+- **Cloudflare DNS/edge services:** retain where currently configured and useful. Do not change production DNS as part of implementation batches.
+- **Supabase:** retain Auth, PostgreSQL, and private Storage. Never reset or reapply production migrations to “make sure.” Inspect migration history and live schema read-only before proposing a production change.
+- **Tavily:** preserve the working integration and its current request/result bounds. DuckDuckGo may be evaluated as an additional source only after verifying the exact official API capability and terms; do not replace Tavily or add an unofficial scraper by assumption.
+- **Vision/documents:** retain configured Groq/Cloudflare vision and Gemini PDF extraction where valid. Keep provider credentials server-side and verify provider limits before changing model IDs or file limits.
+- **Voice:** retain the current authenticated Cloudflare Workers AI Whisper API flow and ten-minute recording-session limit. Improve reliability without replacing the provider by default.
+- **Email:** inspect current live configuration before any Resend migration. Existing password-recovery behavior is accepted; do not redesign it without a reproducible defect.
+- **No image generation. No GitHub integration in this scope.** Do not add a new database, cache, queue, workflow engine, hosting platform, or dependency unless a measured need and the applicable approval gate justify it.
 
-**Audit update (2026-10-24):** the owner confirms the previous authentication, MFA/AAL2, test-account creation, and password-recovery acceptance tests passed. Treat those checks as accepted and preserve the implementation; do not rerun or rebuild them absent a demonstrated regression. The CI run associated with PR #27 completed successfully: unit tests, lint, typecheck, and Cloudflare Worker build passed. This is repository CI evidence, not live production verification.
+Official Vercel documentation currently describes a 4.5 MB request/response payload limit for Functions and plan-dependent duration/usage limits. The repository has server upload routes with 10 MiB file and 20 MiB audio limits, so those application-level limits do not guarantee that Vercel will accept those uploads. Move large upload bytes directly to private Supabase Storage through an authenticated upload flow, or use a smaller request path; do not rely on oversized uploads passing through a Vercel Function. Confirm the current Vercel plan settings and actual deployed behavior before treating any duration allowance as guaranteed.
 
-**Initial conclusion:** the core code for the previous Foundation Batch 1 appears substantially present on current `main`. Do not implement it again. The next step is a gap audit: verify tests and source contracts, identify any exact missing checks, and verify live Supabase setup only through authorized read-only inspection or user-provided evidence. Report each item as **source present**, **automated test present/passing**, **live verified**, or **unknown**. Do not mark a feature complete based on one evidence category alone.
+## 2. Evidence-based current-state audit
 
-## 2. Architecture direction
+Repository inspection of `main` at `87f117c674c0c805177eb248724e92c81a594844` established:
 
-The user wants a complete, stable architecture that is not forced to keep CPU-heavy application work on Cloudflare because of the Workers free-tier CPU limit. Therefore, do **not** assume Cloudflare remains the primary application runtime, and do **not** jump straight to adding a second processing service beside an otherwise unchanged backend.
+- `lib/tavily-search.mjs` already has bounded results, excerpt and aggregate context caps, response-body limits, URL normalization/deduplication, bounded retry handling, and safe errors.
+- `app/api/chat/route.ts` uses AI SDK streaming (`streamText` / UI message stream conversion), authenticates users, and applies request/context/tool bounds. It declares `maxDuration = 30`.
+- `app/api/transcribe/route.ts` authenticates users, validates a server-created recording session, enforces a ten-minute session cap and 20 MiB audio cap, and calls Cloudflare Workers AI over its API.
+- `lib/runtime-env.ts` imports `getCloudflareContext()` with a `process.env` fallback. This is a portability touchpoint to verify, not proof that the entire app needs rewriting.
+- Conversation lifecycle, idempotent message saves, private file APIs, upload-first attachment references, and TXT/Markdown/CSV/JSON/HTML/PDF/DOCX plus image processing were merged in PR #30. Audit these against current source and tests; do not rebuild them by default.
+- Supabase migrations `0001` through `0006` exist in the repository. Their presence does not prove that all migrations are applied to the live project or that current live RLS/storage policies are correct.
+- The GitHub Vercel status check for the current `main` commit reports success. That is deployment-check evidence, not a substitute for authenticated live workflow tests.
+- The current CI runs unit tests, lint, typecheck, the Cloudflare Worker build, and a Docker build. It did not explicitly run `pnpm build` as a named native Next.js/Vercel check; Batch 1 adds that independent check.
+- README and implementation-spec sections still contain older Cloudflare-primary assumptions and need reconciliation with this decision.
+- Current upload and audio routes proxy binary bodies through the application server. Their 10 MiB and 20 MiB application limits conflict with the documented Vercel Function payload limit; this is a concrete reliability gap.
+- Password recovery, MFA/AAL2, owner account creation, and the previous accepted auth tests are preserved. Do not repeat or redesign them without evidence of a regression.
 
-Evaluate two coherent target shapes before implementation:
+Status reporting must distinguish **source present**, **automated test present/passing**, **Vercel/preview verified**, **live provider verified**, and **unknown**. CI, a deployment status check, source code, and a live acceptance test are different forms of evidence.
 
-1. **Google Cloud Run:** candidate for hosting the Next.js/OpenNext-compatible application runtime and/or a modular backend service, subject to adapter/runtime compatibility, streaming, session, and cost checks.
-2. **Google Cloud Functions:** candidate for discrete request/event handlers or provider tasks; verify whether it is suitable for the complete Next.js application before selecting it as the main runtime.
+## 3. Four substantial implementation batches
 
-Compare these with the existing Cloudflare deployment using current official documentation and a small compatibility proof. Evaluate: framework/runtime compatibility; streaming behavior; CPU and wall-clock limits; request/body limits; execution duration; cold starts; concurrency; background work; logs/metrics; secrets and service-to-service auth; region/latency; free-tier limits and billing/payment requirements; deployment complexity; and rollback. Do not assume that a free allowance means no billing account or payment method is required.
+No extra implementation batches are to be inserted between these four. Related work belongs in the appropriate batch and is completed as a coherent unit. Work may be ordered internally for safety, but it is not reported as a separate batch.
 
-**Architecture rule:** select one primary server runtime for each responsibility. Cloudflare may remain for DNS/CDN/edge routing if it adds value, but avoid duplicate API implementations and split-brain auth/orchestration. Keep Supabase for PostgreSQL/Auth/private Storage unless evidence justifies a change. Keep Tavily unless evidence supports replacement. Text-model placement is an explicit decision in this review; the existing Cloudflare Workers AI model is a current behavior, not an unchangeable hosting requirement.
+### Batch 1 — Vercel runtime foundation, portability, streaming and verification
 
-## 3. Diagnose CPU/reliability with evidence
+Scope:
+- Reconcile runtime assumptions with Vercel as primary and Cloudflare as a retained service/fallback.
+- Inspect all Cloudflare-specific runtime imports/bindings and keep environment secrets server-only; preserve compatibility for the retained Worker.
+- Add an explicit native Next.js production build to CI while retaining tests, lint, typecheck, Cloudflare Worker build, and container build.
+- Test native AI SDK streaming, ordered tool events, cancellation, partial/error outcomes, and bounded response delivery. Preserve native streaming; never buffer the complete answer and simulate chunks.
+- Improve only demonstrated runtime/error/diagnostic gaps. Preserve auth, owner/AAL2, user isolation, existing UI, and accepted password recovery.
+- Update README, this roadmap, the implementation specification, and relevant setup notes so deployment instructions match Vercel and do not describe the Worker as the production application runtime.
 
-Cloudflare error 1102 / HTTP 503 has been associated with CPU exhaustion, but do not assume all failures have one cause. Trace chat/search, transcription, vision, and document paths end-to-end. Separate:
+Acceptance:
+- Unit/contract tests, lint, typecheck, native `pnpm build`, retained Cloudflare build, and container build pass.
+- Vercel preview can load the app, authenticate, and stream a response before generation finishes.
+- Tool order, abort/error states, request IDs, and safe diagnostics behave as expected.
+- The retained Cloudflare deployment configuration remains intact.
+- Any live test not performed is explicitly listed as unknown; no production cutover is implied.
 
-- actual CPU time where available;
-- total wall-clock duration and provider latency;
-- bytes read, decoded, parsed, encoded, or serialized;
-- request/response sizes and memory pressure;
-- provider quota, rate limits, timeouts, and availability;
-- runtime/configuration errors.
+### Batch 2 — Conversation reliability, persistence, and private upload flows
 
-Use reproducible inputs and redacted correlation IDs. Never log prompts, transcripts, audio, cookies, credentials, raw provider payloads, or private file contents. If CPU telemetry is unavailable, state that limitation and use a controlled comparative test; do not infer CPU usage from a slow request alone.
+Scope:
+- Audit the merged conversation APIs, message persistence, pin/archive/rename/delete lifecycle, idempotency, sequence allocation, and interrupted/failed assistant states.
+- Verify save/retry behavior cannot duplicate user turns or assistant messages, and that a refresh/reopen restores the correct conversation and context.
+- Fix the Vercel request-size conflict for file and audio uploads. Prefer authenticated direct-to-private-Supabase-Storage upload with server-verified ownership and metadata, then send compact file references to application routes. Never put base64 file data in chat messages.
+- Preserve MIME/signature validation, per-user storage paths, short-lived signed URLs, deletion/cleanup, size limits, and private bucket policies.
+- Inspect migrations `0001`–`0006` and live migration state read-only. Do not apply or alter production migrations without separate explicit approval.
+- Exercise network loss, duplicate submission, partial persistence, oversized payload, unauthorized file access, and cleanup failures using custom test scripts where useful.
 
-## 4. One sequential delivery plan
+Acceptance:
+- Existing and new automated tests pass; relevant API workflows are tested on a Vercel preview with a real authorized account.
+- Large file/audio bytes no longer rely on exceeding Vercel Function request limits.
+- Conversation history and file access remain user-isolated.
+- Production schema, data, secrets, and DNS remain unchanged unless separately approved.
 
-### Phase A — Complete this documentation review
+### Batch 3 — Provider workflows: search, transcription, vision and documents
 
-- Update this roadmap and `docs/IMPLEMENTATION_SPEC.md` so the target runtime is an open architecture decision centered on Google Cloud Run vs Google Cloud Functions, rather than a pre-decided Cloudflare-primary design.
-- Keep the prior Foundation Batch 1 requirements, but label their implementation status as audited/partially verified, not pending by default.
-- Preserve the historical recovery notes and the existing UI/security decisions.
-- Keep the PR documentation-only.
-**Gate:** review the diff, links, and CI; do not merge automatically.
+Scope:
+- Preserve Tavily as the primary existing search integration and its current behavior/guardrails. Add regression coverage for timeout, cancellation, 429, 5xx, malformed/oversized payloads, partial results, deduplication, and source provenance.
+- Evaluate DuckDuckGo as an optional additive search source only after verifying the official API's actual search capability, response quality, rate limits, terms, and reliability. Do not replace Tavily, introduce an unofficial scraping dependency, or silently switch providers. If the available API is only an Instant Answer endpoint, document that limitation and do not misrepresent it as full web search.
+- Harden the existing ten-minute Whisper transcription flow: upload/session validation, timeouts, bounded retry, provider failures, request cancellation, useful user errors, and redacted diagnostics. Preserve authentication and session attempt limits.
+- Verify image processing and PDF/TXT/Markdown/CSV/JSON/HTML/DOCX extraction against the current provider contracts. Keep private-file ownership checks before any provider can access content; keep outputs and source references bounded.
+- Inspect current Resend/email settings and verify a live reset/delivery flow before any provider migration. Preserve accepted MFA/AAL2 recovery behavior.
+- Add temporary test scripts for full route workflows using mocks and, where credentials are safely available, preview tests. Never print secrets or private file contents.
 
-### Phase B — Foundation gap audit (no duplicate implementation)
+Acceptance:
+- Tavily tests and any accepted additive search-provider tests pass; Tavily remains usable when the optional provider is absent or fails.
+- Voice failures recover safely without duplicate transcription attempts or false success.
+- Image/document workflows respect provider limits, private file ownership, timeouts, and partial-failure reporting.
+- Live provider tests are clearly separated from mocked/unit/contract tests.
 
-Inspect current `main`, tests, migrations, environment readers, auth/admin APIs, voice-session checks, diagnostic handling, and current feature flags. Build an evidence table for the previous Batch 1 (Tavily bound, schema/RLS, protected auth/admin/password lifecycle/transcription) and for later stages. Check live Supabase state only through authorized, read-only evidence; never reset or reapply migrations to “make sure.”
+### Batch 4 — Agent Workflow System and full application acceptance
 
-Deliver:
-- completed / source-present / test-covered / live-verified / unknown status per requirement;
-- exact gaps and the minimum tests needed to close them;
-- a list of Cloudflare-specific dependencies and portable application-level controls;
-- no code changes unless separately approved after the audit.
+Scope:
+- Implement the documented Agent Workflow System only after runtime, persistence, and file/provider boundaries are stable.
+- Choose one durable execution mechanism after verifying current Vercel and retained Cloudflare capabilities and limits. Do not introduce a queue/workflow engine merely because it was mentioned as an option.
+- Provide authoritative run state, ordered stage events, progress/reconnect recovery, duplicate-submit protection, idempotent retries, cancellation, timeout/failure handling, cleanup/retention, and user-scoped access controls.
+- Store large artifacts and file payloads by private storage reference; do not put them in queue messages or realtime events.
+- Preserve the existing user interface and integrate workflow controls without redesigning unrelated areas.
+- Add the owner-managed invited-user quota design only if it is explicitly included in the documented acceptance scope and the implementation can enforce concurrency-safe limits. The current `docs/architecture/INVITED_USER_LIMITS.md` is design-only and does not authorize quota tables or enforcement by itself.
+- Run the complete regression/acceptance matrix across authentication, MFA/AAL2, authorization/revocation, RLS, streaming, tool calls, Tavily/optional search, vision/documents, voice, persistence, upload/download/delete, diagnostics, provider quota/timeouts, workflow recovery, and rollback.
 
-**Gate:** agree on the actual remaining work before any implementation. Do not repeat Batch 1 where source and tests already satisfy the requirement.
+Acceptance:
+- All automated checks and workflow tests pass.
+- Preview testing confirms real end-to-end workflows with authorized accounts and configured providers.
+- Each requirement has evidence and a status; no untested feature is described as verified.
+- Production deployment, database migration, secret, and DNS changes remain separate explicit actions.
 
-### Phase C — Runtime decision and migration design
+## 4. Security and reliability invariants
 
-Compare Cloud Run, Cloud Functions, and retaining some Cloudflare responsibilities using current official quotas/pricing and the audited source. Produce one recommended architecture, a service/data-flow diagram, security boundaries, cost envelope, secrets plan, deployment/rollback plan, and an ordered migration map. Include a minimal compatibility proof for the chosen runtime (especially Next.js routing, streaming, Supabase sessions, and AI SDK behavior) before committing to a full migration.
+- Server-verified Supabase session and fresh disabled-user/access-state checks for protected APIs.
+- Owner-only admin access and server-verified AAL2; never trust client-editable role metadata.
+- Provider secrets and Supabase service-role key remain server-side.
+- Validate body size from actual bytes, file type/signature, schemas, counts, and model/tool permissions.
+- Bound elapsed time, provider calls, output, concurrency, retries, and memory-heavy transformations.
+- Respect provider 429/Retry-After and avoid retrying side-effecting operations without idempotency.
+- Preserve native streaming; use bounded buffering only for incomplete protocol frames/necessary state, never to delay the whole response.
+- Preserve user data isolation across database, storage, caches, jobs, and realtime channels.
+- Keep diagnostics redacted; never log prompts, messages, transcripts, audio, credentials, cookies, raw provider payloads, or private file contents.
+- Application diagnostic rows are not native Cloudflare logs; clearing one must not be described as clearing the other.
+- Do not claim complete success when only partial results were produced.
 
-Define which existing restrictions are application-level invariants and must remain: auth/owner/AAL2 checks, user isolation, request and file validation, safe errors, timeouts, quota handling, redaction, and provider-side secret protection. Adjust only limits that exist solely because of Cloudflare’s runtime. Keep the current application available for rollback until acceptance passes.
+## 5. Execution and reporting rules
 
-**Gate:** owner approval of the architecture and cost/payment requirements before provisioning or migrating production.
+For each of the four batches, record baseline/target commit SHAs, changed files, reason for each change, exact test commands and results, CI status, preview/live tests actually performed, deployment status, known gaps, and rollback instructions.
 
-### Phase D — Migrate the primary runtime and the first measured bottleneck
+Use custom temporary test scripts where source-level tests are insufficient. Prefer tests that exercise route logic and observable behavior over tests that only assert that a string exists. Run the complete relevant verification suite before advancing. If a test cannot be run because live credentials, browser access, or an authorized account are unavailable, report the blocker rather than claiming success.
 
-Move one coherent application/runtime responsibility at a time, not parallel duplicate implementations. Begin with the minimum viable runtime foundation, then move the first workload selected by Phase C’s evidence. Keep synchronous processing when bounded; add a queue only if work is long-running or needs durable retry/progress. Add caching only with defined freshness, invalidation, and user isolation.
+Never deploy to production, change DNS, alter production secrets, apply live Supabase migrations, or provision paid infrastructure without separate explicit approval.
 
-Required tests include service/auth boundaries, streaming, timeout/cancellation, payload bounds, provider failure/quota, redaction, duplicate requests, and rollback. Compare before/after evidence for the original failure case.
+## 6. Documentation authority
 
-**Gate:** build/tests and preview smoke tests pass; no production deployment without explicit approval.
+- `docs/NEXT_PHASE_PLAN.md`: controlling four-batch execution and acceptance roadmap.
+- `docs/VERCEL-FIRST-DEPLOYMENT-PLAN.md`: Vercel deployment/runtime details; align it to this roadmap.
+- `docs/IMPLEMENTATION_SPEC.md`: product requirements; reconcile obsolete hosting assumptions with this plan.
+- `docs/AI_PIPELINE_REQUIREMENTS.md`: streaming, bounds, provenance, retries, cancellation, and diagnostics requirements.
+- `docs/AI_PIPELINE_BATCH_PLAN.md` and `docs/AI_PIPELINE_RECOVERY_STATUS.md`: historical pipeline notes, not current completion trackers.
+- `docs/SECURE-APPLICATION-DIAGNOSTICS.md`: application diagnostic access and native Cloudflare log limitations.
+- `docs/architecture/INVITED_USER_LIMITS.md`: future design only unless explicitly approved as implementation scope.
 
-### Phase E — Finish remaining product foundation in dependency order
-
-After runtime stability, complete only verified gaps in this order:
-
-1. Authentication/access, migration/RLS and diagnostics acceptance gaps from Phase B.
-2. Conversation/message persistence, including retry/idempotency and interrupted/failed assistant states.
-3. Private Supabase Storage and upload-first attachment references; no base64 in chat requests.
-4. External vision provider, after file ownership and provider-access controls are proven.
-5. PDF first, then TXT, then DOCX; only enable each UI action after its backend passes acceptance.
-6. Supabase keep-alive only if current plan rules and activity requirements justify it; choose the scheduler supported by the final runtime rather than assuming Cloudflare Cron.
-7. Resend migration only after inspecting current configuration and verifying a live delivery/reset flow; do not treat intent or documentation as completion.
-
-The prior Foundation Batch 1 is audited in Phase B, not restarted as a new implementation batch. Preserve existing UI and password-recovery behavior unless a reproducible defect is found.
-
-### Phase F — Agent Workflow System and end-to-end acceptance
-
-Implement the Agent Workflow System only after runtime, auth, persistence, and file/provider boundaries are stable. First decide whether Cloudflare Workflows remains suitable or whether the selected Google Cloud architecture provides the better durable execution mechanism. Use one workflow engine, one authoritative execution state, durable run/event records where needed, user-scoped RLS, duplicate-submit protection, idempotent retries, cancellation, reconnect recovery, cleanup, and authorized Realtime notifications if Supabase Realtime remains the chosen client update channel.
-
-Run the complete acceptance matrix across auth, RLS, chat streaming, Tavily, vision/documents, voice, persistence, uploads, quota/timeouts, diagnostics, and recovery. Record CI, live-provider/browser results, deployment state, and unverified items separately.
-
-## 5. Portability and security invariants
-
-Preserve these regardless of runtime:
-
-- Server-verified Supabase session and disabled-user checks on private APIs.
-- Owner-only admin access and server-verified AAL2; trusted role metadata is not client-editable.
-- Secrets remain server-side; no credentials in client bundles, logs, or responses.
-- Strict request/body/file limits, schema validation, timeouts, cancellation, provider quota handling, and safe error messages.
-- Per-user data isolation in database, storage, cache, jobs, and realtime subscriptions.
-- Private storage, ownership checks before provider access, short-lived signed URLs where needed, and no permanent public file URLs.
-- Redacted structured diagnostics and correlation IDs. Application diagnostic rows are not native Cloudflare logs; deleting one must not be described as deleting the other.
-- Preserve streaming rather than buffering a complete answer and simulating chunks.
-- No image generation or GitHub integration in this scope.
-- No new database, Redis, queue, cache, microservice, or workflow engine without a measured need and approved design.
-
-## 6. Acceptance and reporting rules
-
-For each phase, record:
-- baseline and target commit SHA;
-- changed files and why;
-- automated tests, lint, typecheck, and applicable build results;
-- live tests actually performed and their evidence;
-- deployment status (separate from CI);
-- known gaps and rollback steps.
-
-A successful CI run is not proof of production deployment or live Supabase/provider acceptance. Do not provision services, change secrets, alter production DNS, apply live migrations, or deploy without explicit approval.
-
-## 7. Documentation authority
-
-- `docs/NEXT_PHASE_PLAN.md`: controlling architecture, audit, and execution roadmap.
-- `docs/IMPLEMENTATION_SPEC.md`: product requirements and stage acceptance criteria; runtime-specific assumptions defer to this roadmap until the architecture is approved.
-- `docs/AI_PIPELINE_REQUIREMENTS.md`: reusable streaming, bounds, retries, and observability requirements.
-- `docs/AI_PIPELINE_BATCH_PLAN.md` and `docs/AI_PIPELINE_RECOVERY_STATUS.md`: historical recovery notes, not current completion trackers.
-- `docs/SECURE-APPLICATION-DIAGNOSTICS.md`: diagnostic access, retention, and native Cloudflare log limitations.
-- `docs/architecture/*`: detailed design/setup notes; verify their runtime/provider assumptions before following them.
-- `docs/REUSABLE-FOUNDATION-PLAN.md`: historical audit only; superseded provider choices are not current requirements.
-
-When documents conflict, verify current source and approved decisions, then update the owning document rather than creating another competing plan.
+When documents conflict, preserve the user's current approved architecture and verify source before changing code. Update the owning document rather than creating competing plans.
