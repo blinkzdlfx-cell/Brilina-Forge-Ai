@@ -195,6 +195,12 @@ export async function POST(request: Request) {
       return jsonError("The transcription service returned no transcript.", 502)
     }
 
+    if (audioStoragePath) {
+      const { error: audioCleanupError } = await admin.storage.from("forge-private-audio").remove([audioStoragePath])
+      if (audioCleanupError) {
+        await recordSecureDiagnostic({ event: "transcription_audio_cleanup_failed", level: "warning", route: "/api/transcribe", userId: context.user.id, requestId, statusCode: 200, details: { stage: "audio_cleanup" } })
+      }
+    }
     const { error: cleanupError } = await admin.from("voice_recording_sessions").delete().eq("id", session.id).eq("user_id", context.user.id)
     if (cleanupError) {
       await recordSecureDiagnostic({ event: "transcription_session_cleanup_failed", level: "warning", route: "/api/transcribe", userId: context.user.id, requestId, statusCode: 200, details: { stage: "session_cleanup", databaseErrorCode: cleanupError.code ?? null } })
