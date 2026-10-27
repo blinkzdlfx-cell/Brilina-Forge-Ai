@@ -155,7 +155,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
     {modal === "settings" && <StyledModal title="Profile and settings" onClose={closeModal}>
       <div className="flex items-center gap-4">
         <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted">
-          {avatarUrl ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={avatarUrl} alt="Profile photo" className="size-full object-cover" /> : <SettingsIcon className="size-6 text-muted-foreground" />}
+          {avatarUrl ? <img src={avatarUrl} alt="Profile photo" className="size-full object-cover" /> : <SettingsIcon className="size-6 text-muted-foreground" />}
         </div>
         <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{profileEmail || "Your account"}</p><p className="mt-1 text-xs text-muted-foreground">Profile photo (up to 2 MiB)</p><input ref={avatarInput} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => void uploadAvatar(e.currentTarget.files?.[0])} /><button type="button" disabled={avatarBusy} onClick={() => avatarInput.current?.click()} className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50"><UploadIcon className="size-3.5" />{avatarBusy ? "Uploading…" : "Upload photo"}</button></div>
       </div>
