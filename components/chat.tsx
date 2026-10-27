@@ -72,6 +72,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
   const conversationIdRef = React.useRef<string | null>(null)
   React.useEffect(() => { conversationIdRef.current = conversationId }, [conversationId])
   const [attachmentError, setAttachmentError] = React.useState("")
+  const sendPreparationRef = React.useRef(false)
   const [collapseExpandedMessagesKey, setCollapseExpandedMessagesKey] = React.useState(0)
 
   const {
@@ -129,6 +130,9 @@ export function Chat({ models }: { models: GatewayModel[] }) {
 
   const handleSendMessage = React.useCallback(
     async (text: string, files: File[] = []) => {
+      if (sendPreparationRef.current) return
+      sendPreparationRef.current = true
+      try {
       let requestModel = resolvedModel
       const imageFiles = files.filter((file) => file.type.startsWith("image/"))
       const totalImageCount = recentImageCount + imageFiles.length
@@ -193,6 +197,9 @@ export function Chat({ models }: { models: GatewayModel[] }) {
         void sendMessage({ text: (text || "Please analyze the attached files.") + attachmentText.join("") }, { body: { model: resolvedModel } })
       } else {
         void sendMessage({ text }, { body: { model: resolvedModel } })
+      }
+      } finally {
+        sendPreparationRef.current = false
       }
     },
     [models, recentImageCount, resolvedModel, sendMessage, refreshConversations]
