@@ -182,14 +182,21 @@ export function Chat({ models }: { models: GatewayModel[] }) {
             return
           }
           const image = file.type.startsWith("image/")
-          const processed = await fetch("/api/files/" + encodeURIComponent(uploadedFile.id) + "/process", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ mode: image ? "analyze" : "extract", prompt: text || "Describe this image accurately, including visible text and important details.", model: requestModel }),
-          })
-          const processPayload = await processed.json() as { text?: string; error?: string }
-          if (!processed.ok || typeof processPayload.text !== "string") {
+          let processPayload: { text?: string; error?: string }
+          try {
+            const processed = await fetch("/api/files/" + encodeURIComponent(uploadedFile.id) + "/process", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ mode: image ? "analyze" : "extract", prompt: text || "Describe this image accurately, including visible text and important details.", model: requestModel }),
+            })
+            processPayload = await processed.json() as { text?: string; error?: string }
+            if (!processed.ok || typeof processPayload.text !== "string") {
+              await fetch("/api/files/" + encodeURIComponent(uploadedFile.id), { method: "DELETE" }).catch(() => undefined)
+              setAttachmentError("Could not process " + file.name + ". " + (processPayload.error ?? "Try a supported file or try again."))
+              return
+            }
+          } catch {
             await fetch("/api/files/" + encodeURIComponent(uploadedFile.id), { method: "DELETE" }).catch(() => undefined)
-            setAttachmentError("Could not process " + file.name + ". " + (processPayload.error ?? "Try a supported file or try again."))
+            setAttachmentError("The connection was interrupted while processing " + file.name + ". Upload it again and retry.")
             return
           }
           attachmentText.push("\n\n[Attachment: " + uploadedFile.original_name + "]\n" + processPayload.text.slice(0, 9000))
