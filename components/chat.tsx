@@ -257,12 +257,15 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
   const lastMessage = messages.at(-1)
   const firstUserMessage = messages.find((message) => message.role === "user")
   const firstUserText = firstUserMessage?.parts.find(
-    (part) => part.type === "text"
+    (part) => part.type === "text" && !part.text.startsWith("[[FORGE_PRIVATE_ATTACHMENT_CONTEXT]]\n")
   )
+  const firstUserFile = firstUserMessage?.parts.find((part) => part.type === "file")
   const conversationTitle =
     firstUserText?.type === "text"
       ? firstUserText.text.trim().slice(0, 64)
-      : "New chat"
+      : firstUserFile?.type === "file"
+        ? firstUserFile.filename ?? "Attachment chat"
+        : "New chat"
 
   const pendingQuestion =
     lastMessage?.role === "assistant"
