@@ -44,7 +44,7 @@ cp .env.example .env.local
 pnpm dev
 ```
 
-Voice input requires microphone permission and a secure context (HTTPS; localhost is accepted for local development). Recordings are uploaded to the application's server endpoint and transcribed by Cloudflare Workers AI. Failed audio is retained in page memory for retry during the current session; durable server-side audio storage is planned separately and is not yet implemented. The endpoint limits uploads to 20 MB and transcription attempts time out after 45 seconds. Workers AI usage is subject to Cloudflare's current allocation and applicable plan pricing.
+Voice input requires microphone permission and a secure context (HTTPS; localhost is accepted for local development). Recordings are uploaded directly from the browser to the private `forge-private-audio` Supabase Storage bucket using a short-lived signed upload URL, then the authenticated application sends only an owner/session-scoped object reference to the transcription route. Audio remains capped at 20 MiB and ten minutes. The application deletes the stored audio after successful transcription; failed audio can be retried during the current page session. The private audio bucket and its RLS policies are defined in migration `0007_private_audio_storage.sql`; apply it through the reviewed migration process before testing the new direct-audio-upload flow. Do not apply it to production without separate approval. Workers AI usage is subject to Cloudflare's current allocation and applicable plan pricing.
 
 ## Vercel deployment
 
