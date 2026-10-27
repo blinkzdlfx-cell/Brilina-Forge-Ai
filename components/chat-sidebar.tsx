@@ -38,6 +38,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
   const router = useRouter()
   const { state, isMobile, setOpenMobile } = useSidebar()
   const [menuFor, setMenuFor] = React.useState<string | null>(null)
+  const [recentMenuOpen, setRecentMenuOpen] = React.useState(false)
   const [modal, setModal] = React.useState<"recent" | "pinned" | "search" | "settings" | "rename" | "delete" | null>(null)
   const [selected, setSelected] = React.useState<SidebarConversation | null>(null)
   const [renameValue, setRenameValue] = React.useState("")
@@ -110,7 +111,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel className="flex items-center justify-between"><span>{props.showArchived ? "Archived" : "Recent"}</span><button type="button" aria-label={props.showArchived ? "Show recent conversations" : "Show archived conversations"} title={props.showArchived ? "Recent" : "Archive"} className="rounded p-1 text-muted-foreground hover:text-foreground group-data-[collapsible=icon]:hidden" onClick={props.onToggleArchived}><EllipsisIcon className="size-3.5" /></button></SidebarGroupLabel>
+          <SidebarGroupLabel className="flex items-center justify-between"><span>{props.showArchived ? "Archived" : "Recent"}</span><div className="relative group-data-[collapsible=icon]:hidden"><button type="button" aria-label="Recent section options" title="Options" className="rounded p-1 text-muted-foreground hover:text-foreground" onClick={() => setRecentMenuOpen((open) => !open)}><EllipsisIcon className="size-3.5" /></button>{recentMenuOpen && <div role="menu" className="absolute right-0 top-full z-50 mt-1 min-w-32 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl"><button type="button" role="menuitem" onClick={() => { props.onToggleArchived(); setRecentMenuOpen(false) }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-muted">{props.showArchived ? <MessageSquareIcon className="size-4" /> : <ArchiveIcon className="size-4" />}{props.showArchived ? "Recent" : "Archive"}</button></div>}</div></SidebarGroupLabel>
           <SidebarMenu>
             {props.isLoading ? Array.from({ length: 5 }, (_, i) => <SidebarMenuItem key={i} className="px-2 py-1 group-data-[collapsible=icon]:hidden"><div className="flex items-center gap-2"><Skeleton className="size-4 rounded-md" /><Skeleton className={`h-4 ${i % 2 ? "w-2/3" : "w-4/5"}`} /></div></SidebarMenuItem>) : <>
               {!props.showArchived && pinned.length > 0 && <><p className="px-3 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground group-data-[collapsible=icon]:hidden">Pinned</p>{pinned.map(renderConversation)}<p className="px-3 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground group-data-[collapsible=icon]:hidden">Recent</p></>}
@@ -121,7 +122,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border p-2">
-        <button type="button" onClick={() => void openSettings()} className="flex w-full items-center gap-2 rounded-xl p-2 text-left hover:bg-sidebar-accent group-data-[collapsible=icon]:justify-center" aria-label="Profile and settings" title="Profile and settings">
+        <button type="button" onClick={() => void openSettings()} className="flex w-full items-center gap-2 rounded-xl p-2 text-left hover:bg-sidebar-accent group-data-[collapsible=icon]:hidden" aria-label="Profile and settings" title="Profile and settings">
           {avatarUrl ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={avatarUrl} alt="" className="size-8 rounded-full object-cover" /> : <span className="flex size-8 items-center justify-center rounded-full bg-muted"><SettingsIcon className="size-4" /></span>}
           <span className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden"><span className="block text-sm font-medium">Settings</span><span className="block truncate text-xs text-muted-foreground">Profile and account</span></span>
         </button>
