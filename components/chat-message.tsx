@@ -19,6 +19,8 @@ import { Bubble, BubbleContent } from "@/components/ui/bubble"
 import { Message, MessageContent } from "@/components/ui/message"
 import { Trace } from "@/components/ui/trace"
 
+const PRIVATE_ATTACHMENT_CONTEXT_PREFIX = "[[FORGE_PRIVATE_ATTACHMENT_CONTEXT]]\\n"
+
 type StepPart = Extract<
   ChatMessagePart,
   {
@@ -55,7 +57,7 @@ export function ChatMessage({
   const holdTriggered = React.useRef(false)
 
   if (message.role === "user") {
-    const userText = message.parts.filter((part) => part.type === "text").map((part) => part.text).join("")
+    const userText = message.parts.filter((part) => part.type === "text" && !part.text.startsWith(PRIVATE_ATTACHMENT_CONTEXT_PREFIX)).map((part) => part.text).join("")
     const fileParts = message.parts.filter((part): part is Extract<ChatMessagePart, { type: "file" }> => part.type === "file")
     const imageParts = fileParts.filter((part) => part.mediaType.startsWith("image/"))
     const documentParts = fileParts.filter((part) => !part.mediaType.startsWith("image/"))
