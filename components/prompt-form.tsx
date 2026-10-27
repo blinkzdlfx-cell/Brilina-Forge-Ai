@@ -169,7 +169,7 @@ export function PromptForm({
   }, [previewFile])
 
   React.useEffect(() => {
-    if (!previewFile) { setPreviewUrl(""); setPreviewText(""); setPreviewError(""); setPreviewLoading(false); return }
+    if (!previewFile) return
     const url = URL.createObjectURL(previewFile)
     let active = true
     let temporaryFileId: string | null = null
