@@ -3,7 +3,7 @@
 **Repository:** `blinkzdlfx-cell/Brilina-Forge-Ai`  
 **Application branch:** `main`  
 **Current production runtime:** Vercel (Next.js 16, React 19, AI SDK); the Cloudflare Worker remains a retained fallback and Cloudflare Workers AI is called over HTTPS  
-**Last reconciled against main:** `ab35de3ed9b5db62866b7f4d780c92d7e8104df7` (2026-10-27)  
+**Last reconciled against main:** `d9763d0c84b02984fab6006045b7815b46369404` (2026-10-27)  
 **Status:** Product/stage requirements, not a live implementation tracker. Verify each stage against current source, automated tests, live migration state, and acceptance evidence.  
 **Execution rule:** Four substantial sequential batches. Complete implementation and comprehensive verification for each batch before progressing. No production deployment or GitHub integration without separate explicit approval.
 
@@ -11,14 +11,13 @@ This document retains product requirements and acceptance criteria. **Runtime/ho
 
 ## Status and verification rules
 
-- The owner has confirmed that password recovery works after the MFA/AAL2 recovery fix. Do not redesign that flow without a demonstrated defect.
-- Repository migrations, configuration files, and passing CI do not prove that the corresponding live Supabase settings or production deployment are complete.
-- Batch 2 was merged to main on 2026-10-27 (merge commit `ab35de3ed9b5db62866b7f4d780c92d7e8104df7`); GitHub Actions CI passed, including unit/contract tests, lint, type checking, native Next.js production build, Cloudflare Worker build, and Cloud Run container build. Vercel produced a Ready preview. Authenticated end-to-end upload, transcription, cross-user isolation, and persistence checks remain pending.
-- Supabase migration `0007_private_audio_storage.sql` was explicitly approved and applied to project `jjocynbtuafdokkjemym` on 2026-10-27. Read-only verification confirmed the `forge-private-audio` bucket is private, limited to 20 MiB, and has owner-folder policies for select/insert/update/delete.
-- The live status of external document providers, keep-alive configuration, and other staged features must still be verified from current source and runtime evidence.
+- **Foundation Batch 1:** Native Next.js/Vercel build, AI SDK streaming path, bounded requests/context, lint, type checking, unit/contract tests, retained Cloudflare Worker build, and Cloud Run container build are present in CI. The owner has confirmed a new chat can send a message and receive a response. Detailed streaming, cancellation, error, and manual scroll-follow behavior remain subject to the current acceptance pass.
+- **Foundation Batch 2:** PR #33 was merged as `ab35de3ed9b5db62866b7f4d780c92d7e8104df7`. Direct browser-to-private-Supabase-Storage uploads, conversation/message persistence, and the audio-storage migration are in place. Migration `0007_private_audio_storage.sql` was explicitly approved and applied to project `jjocynbtuafdokkjemym` on 2026-10-27. Current authenticated acceptance is partial: the owner reports document upload works, while image handling/preview and attachment failure recovery need follow-up.
+- **Chat/sidebar interaction work:** PR #36 was merged to `main` as `d9763d0c84b02984fab6006045b7815b46369404`. GitHub Actions CI passed unit/contract tests, lint, typecheck, native Next.js production build, Worker build, and Cloud Run container build. The Vercel commit status is successful. The owner has confirmed sidebar rename/pin/archive/delete, mobile loading indicator, profile/settings modal, long-press prompt actions, new-chat messaging, and existing authentication work on mobile.
+- **Remaining Batch 2 acceptance gaps:** outside-tap dismissal for every popover; removing password/logout from the chat header menu; full-size image/document previews; keeping attachments in the composer through upload and retry; no generated visible prompt for attachment-only sends; no redundant fetch when selecting the already-loaded conversation; and smart scroll-follow that stops when the user scrolls away and resumes near the bottom.
+- A follow-up implementation branch, `fix/attachment-preview-dismissal-chat-streaming`, is being prepared for those gaps. It is not merged, and its CI/preview results must be checked before the owner retests it.
+- Repository migrations, CI, and deployment status do not prove that every live provider workflow is correct. Keep automated results, Vercel status, authenticated preview tests, provider tests, and unknowns distinct.
 - The source currently enforces a 10-minute voice recording limit. Keep documentation aligned with the code unless an approved change is made.
-- Existing stage descriptions below define desired behavior and acceptance criteria; they are not evidence that work has or has not been implemented.
-
 ## Upload and persistence reliability requirements
 
 - Binary uploads bypass Vercel Function request limits through server-authorized signed direct uploads to private Supabase Storage. A server endpoint validates user ownership, metadata, size, bucket, and uploaded object before processing.
@@ -790,15 +789,19 @@ Delivery order is sequential; do not run parallel implementation workstreams:
 
 Stage 5 (Agent Workflow System) remains dependent on stable runtime, auth, and persistence. The final acceptance stage covers the entire application. Do not deploy, alter production DNS, apply live migrations, or begin GitHub integration without separate explicit approval.
 
-## UI interaction batch — implementation in review
+## Chat/sidebar interaction work — merged baseline and remaining acceptance
 
-The current feature branch `feat/chat-attachments-actions-sidebar-profile` adds:
+PR #36, `Improve chat attachments, message actions, sidebar, and conversation restoration`, was merged into `main` as `d9763d0c84b02984fab6006045b7815b46369404`. CI passed and the Vercel status check reported success.
 
-- Private file attachments displayed as user-message image previews or document cards, with processing progress and extraction text stored as a hidden message part rather than rendered in the user bubble.
-- A plus-button attachment menu for images and documents, retaining current MIME and size limits.
-- Conversation URLs at `/c/<conversation-id>`, owner-checked deep links, URL updates when opening/creating conversations, and conversation restoration on refresh.
-- User prompt actions (desktop hover; mobile long-press) for copy, edit, share, and mobile text selection; assistant response actions for copy, share, and try again.
-- Sidebar conversation menus for rename, pin, archive/restore, and delete, with styled confirmation/edit modals; collapsed rail controls for new chat, search, pinned, and recent conversations.
-- Sidebar shimmer placeholders, a gear-style conversation loading state, and profile settings with private profile-photo upload plus log out.
+The merged implementation includes private attachment upload/processing, a plus-button attachment menu, conversation deep links, prompt and assistant actions, sidebar conversation controls, collapsed-sidebar recent/pinned/search access, loading states, and profile settings/photo upload. The user has manually confirmed the core sidebar actions, mobile loading indicator, profile/settings modal, long-press prompt actions, basic new-chat messaging, and existing authentication.
 
-The changes are not merged. CI and preview acceptance are required before approval. Profile photos are stored in the existing private `forge-private-files` bucket under an owner-scoped path and displayed through short-lived signed URLs. No production deployment or schema migration is part of this batch.
+The current Batch 2 follow-up branch `fix/attachment-preview-dismissal-chat-streaming` proposes fixes for:
+- Dismiss all popovers on outside tap and Escape.
+- Keep password change and logout only inside profile/settings.
+- Add full-size image previews and in-app document previews where browser support permits.
+- Keep selected attachments in the composer while uploading/processing; show a small spinner only, preserve the selection on failure, and retry without creating a separate fake chat bubble.
+- Keep attachment-only messages free of generated visible prompt text while providing the model with bounded hidden attachment context.
+- Avoid reloading the already-active conversation and improve auto-follow while preserving the user's manual scroll position.
+- Update this specification and the execution plan with the actual implementation and acceptance state.
+
+This follow-up is not merged yet. Preserve private storage, owner checks, existing MIME/size limits, native streaming, and invite-only access. Do not start Batch 3 until this follow-up has passed CI, preview verification, and the owner's acceptance pass.
