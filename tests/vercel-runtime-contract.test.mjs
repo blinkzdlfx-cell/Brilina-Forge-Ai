@@ -12,7 +12,7 @@ test("Vercel's native Next.js production build is covered independently of adapt
   assert.match(workflow, /Native Next\.js production build \(Vercel runtime\)/)
   assert.match(workflow, /run: pnpm build\n/)
   assert.match(workflow, /run: pnpm build:worker/)
-  assert.match(workflow, /docker build --tag brilina-forge-ai:ci \\./)
+  assert.match(workflow, /docker build --tag brilina-forge-ai:ci \./)
 })
 
 test("chat keeps native AI SDK streaming and route-specific duration bounds", async () => {
