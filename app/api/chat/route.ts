@@ -123,10 +123,34 @@ export async function POST(req: Request) {
     return jsonError(requestId, "Send at least one chat message.", 400)
   }
 
+  // Attachment extraction happens in the private file-processing route. The
+  // client sends the extracted text separately so it never appears in the
+  // visible user bubble or durable UI message parts.
+  const attachmentContextValue = (body as { attachmentContext?: unknown }).attachmentContext
+  const attachmentContext = typeof attachmentContextValue === "string" ? attachmentContextValue : ""
+  if (attachmentContext.length > 12_000) {
+    return jsonError(requestId, "Attachment context exceeds the allowed limit. Use fewer or smaller files.", 413)
+  }
+  const messagesWithAttachmentContext = rawMessages.map((value, index) => {
+    if (!value || typeof value !== "object") return value
+    const message = value as { role?: unknown; parts?: unknown }
+    if (message.role !== "user" || !Array.isArray(message.parts)) return value
+    const visibleParts = message.parts.filter((part) => {
+      if (!part || typeof part !== "object") return true
+      const filePart = part as { type?: unknown; url?: unknown }
+      return !(filePart.type === "file" && typeof filePart.url === "string" && filePart.url.startsWith("/api/files/"))
+    })
+    if (attachmentContext && index === rawMessages.length - 1) {
+      visibleParts.push({ type: "text", text: "\n\n[Private attachment content for the assistant]\n" + attachmentContext })
+    }
+    return { ...message, parts: visibleParts }
+  })
+
+
   // Bound history before SDK validation/conversion. Keep the newest messages
   // in chronological order and reject oversized text rather than silently
   // dropping context that may contain the user's actual requirements.
-  const context = prepareBoundedContext(rawMessages, {
+  const context = prepareBoundedContext(messagesWithAttachmentContext, {
     maxMessages: MAX_CONTEXT_MESSAGES,
     maxPartsPerMessage: MAX_PARTS_PER_MESSAGE,
     maxTextCharsPerMessage: MAX_MESSAGE_TEXT_CHARS,
