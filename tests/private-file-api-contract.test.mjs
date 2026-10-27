@@ -33,7 +33,7 @@ test("file access creates short-lived signed URLs only after owner-scoped metada
   assert.match(route, /\.eq\("user_id", auth\.user\.id\)/)
   assert.match(route, /createSignedUrl\(file\.storage_path, 60\)/)
   assert.match(route, /export async function DELETE/)
-  assert.match(route, /\.from\("forge-private-audio"\)\.download/)
+  assert.match(route, /storage\.from\(file\.bucket_id\)\.remove/)
 })
 
 test("audio transcription accepts a private file reference instead of binary request bodies", async () => {
