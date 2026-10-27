@@ -3,7 +3,7 @@
 **Repository:** `blinkzdlfx-cell/Brilina-Forge-Ai`  
 **Application branch:** `main`  
 **Current production runtime:** Vercel (Next.js 16, React 19, AI SDK); the Cloudflare Worker remains a retained fallback and Cloudflare Workers AI is called over HTTPS  
-**Last reconciled against main:** `ee35aaef5dae79d4ab7fb695b9f3f1e133f47ea5` (2026-10-24)  
+**Last reconciled against main:** `ab35de3ed9b5db62866b7f4d780c92d7e8104df7` (2026-10-27)  
 **Status:** Product/stage requirements, not a live implementation tracker. Verify each stage against current source, automated tests, live migration state, and acceptance evidence.  
 **Execution rule:** Four substantial sequential batches. Complete implementation and comprehensive verification for each batch before progressing. No production deployment or GitHub integration without separate explicit approval.
 
@@ -13,7 +13,9 @@ This document retains product requirements and acceptance criteria. **Runtime/ho
 
 - The owner has confirmed that password recovery works after the MFA/AAL2 recovery fix. Do not redesign that flow without a demonstrated defect.
 - Repository migrations, configuration files, and passing CI do not prove that the corresponding live Supabase settings or production deployment are complete.
-- The live status of conversation persistence, storage setup, external document providers, keep-alive configuration, and other staged features must be verified from current source and runtime evidence.
+- Batch 2 was merged to main on 2026-10-27 (merge commit `ab35de3ed9b5db62866b7f4d780c92d7e8104df7`); GitHub Actions CI passed, including unit/contract tests, lint, type checking, native Next.js production build, Cloudflare Worker build, and Cloud Run container build. Vercel produced a Ready preview. Authenticated end-to-end upload, transcription, cross-user isolation, and persistence checks remain pending.
+- Supabase migration `0007_private_audio_storage.sql` was explicitly approved and applied to project `jjocynbtuafdokkjemym` on 2026-10-27. Read-only verification confirmed the `forge-private-audio` bucket is private, limited to 20 MiB, and has owner-folder policies for select/insert/update/delete.
+- The live status of external document providers, keep-alive configuration, and other staged features must still be verified from current source and runtime evidence.
 - The source currently enforces a 10-minute voice recording limit. Keep documentation aligned with the code unless an approved change is made.
 - Existing stage descriptions below define desired behavior and acceptance criteria; they are not evidence that work has or has not been implemented.
 
@@ -22,7 +24,7 @@ This document retains product requirements and acceptance criteria. **Runtime/ho
 - Binary uploads bypass Vercel Function request limits through server-authorized signed direct uploads to private Supabase Storage. A server endpoint validates user ownership, metadata, size, bucket, and uploaded object before processing.
 - Preserve the 10 MiB document/image cap, 20 MiB audio cap, and 10-minute recording session limit. Keep private per-user object paths, short-lived signed downloads, and cleanup on deletion.
 - Transcription requests send a private file ID, not audio bytes. The server verifies ownership and bucket before reading audio and calling the configured Whisper API.
-- Message saves must be idempotent by client message ID, handle sequence conflicts safely, and preserve interrupted/failed assistant state. Production migrations require separate approval.
+- Message saves must be idempotent by client message ID, handle sequence conflicts safely, and preserve interrupted/failed assistant state. Live migrations require explicit approval; the Batch 2 audio-storage migration is the specifically approved exception applied on 2026-10-27.
 
 ## 1. Goals and fixed decisions
 
