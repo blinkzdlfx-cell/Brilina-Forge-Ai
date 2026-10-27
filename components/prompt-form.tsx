@@ -598,7 +598,7 @@ export function PromptForm({
     return () => imagePreviews.forEach(({ url }) => URL.revokeObjectURL(url))
   }, [imagePreviews])
 
-  function handleSubmit(event?: React.FormEvent) {
+  async function handleSubmit(event?: React.FormEvent) {
     event?.preventDefault()
     if (voiceState === "recording") {
       finalizeRecording("send")
