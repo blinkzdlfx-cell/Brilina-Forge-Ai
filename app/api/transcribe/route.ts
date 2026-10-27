@@ -109,30 +109,38 @@ export async function POST(request: Request) {
     return jsonError("This recording is already being processed. Try again shortly.", 409)
   }
 
-  const contentLength = Number(request.headers.get("content-length") ?? 0)
-  if (contentLength > MAX_REQUEST_BYTES) {
-    return jsonError("Audio must be 20 MB or smaller. Record a shorter message.", 413)
-  }
-
-  const contentType = (request.headers.get("content-type") ?? "")
-    .split(";")[0]
-    .trim()
-    .toLowerCase()
-  if (!ALLOWED_AUDIO_TYPES.has(contentType)) {
-    return jsonError("This audio format is not supported. Try recording with a current browser.", 415)
-  }
-
-  let audio: ArrayBuffer
+  let fileId: string
   try {
-    audio = await request.arrayBuffer()
+    const body: unknown = await request.json()
+    fileId = body && typeof body === "object" && "fileId" in body && typeof (body as { fileId?: unknown }).fileId === "string"
+      ? (body as { fileId: string }).fileId
+      : ""
   } catch {
-    return jsonError("Invalid audio upload.", 400)
+    return jsonError("Invalid transcription request. Upload the recording and try again.", 400)
   }
+  if (!UUID_PATTERN.test(fileId)) return jsonError("The uploaded audio could not be found. Upload it again.", 400)
 
-  if (!audio.byteLength) return jsonError("The audio recording is empty.", 400)
-  if (audio.byteLength > MAX_AUDIO_BYTES) {
-    return jsonError("Audio must be 20 MB or smaller. Record a shorter message.", 413)
+  const { data: audioFile, error: audioFileError } = await admin.from("files")
+    .select("id, user_id, bucket_id, storage_path, mime_type, size_bytes, status")
+    .eq("id", fileId).eq("user_id", context.user.id).maybeSingle()
+  if (audioFileError || !audioFile || audioFile.bucket_id !== "forge-private-audio") {
+    return jsonError("The uploaded audio could not be found. Upload it again.", 404)
   }
+  if (audioFile.status !== "uploaded" || audioFile.size_bytes < 1 || audioFile.size_bytes > MAX_AUDIO_BYTES) {
+    return jsonError("The uploaded audio is not ready or exceeds the 20 MB limit.", 413)
+  }
+  if (!ALLOWED_AUDIO_TYPES.has(audioFile.mime_type)) return jsonError("This audio format is not supported.", 415)
+
+  const { data: storedAudio, error: audioDownloadError } = await admin.storage
+    .from("forge-private-audio").download(audioFile.storage_path)
+  if (audioDownloadError || !storedAudio) {
+    await recordSecureDiagnostic({ event: "transcription_audio_read_failed", level: "warning", route: "/api/transcribe", userId: context.user.id, requestId, statusCode: 502, details: { stage: "private_storage_read", storageErrorCode: audioDownloadError?.name ?? null } })
+    return jsonError("The uploaded audio could not be read. Upload it again.", 502)
+  }
+  if (storedAudio.size !== Number(audioFile.size_bytes) || storedAudio.size > MAX_AUDIO_BYTES) {
+    return jsonError("The uploaded audio size did not match its metadata.", 413)
+  }
+  const audio = await storedAudio.arrayBuffer()
 
   const accountId = getRuntimeEnv("CLOUDFLARE_ACCOUNT_ID")
   const apiToken = getRuntimeEnv("CLOUDFLARE_AI_API_TOKEN")
@@ -180,6 +188,13 @@ export async function POST(request: Request) {
       return jsonError("The transcription service returned no transcript.", 502)
     }
 
+    const { error: audioCleanupError } = await admin.storage.from("forge-private-audio").remove([audioFile.storage_path])
+    if (audioCleanupError) {
+      await recordSecureDiagnostic({ event: "transcription_audio_cleanup_failed", level: "warning", route: "/api/transcribe", userId: context.user.id, requestId, statusCode: 200, details: { stage: "audio_cleanup", storageErrorCode: audioCleanupError.name ?? null } })
+    } else {
+      const { error: audioMetadataError } = await admin.from("files").delete().eq("id", audioFile.id).eq("user_id", context.user.id)
+      if (audioMetadataError) await recordSecureDiagnostic({ event: "transcription_audio_metadata_cleanup_failed", level: "warning", route: "/api/transcribe", userId: context.user.id, requestId, statusCode: 200, details: { stage: "audio_metadata_cleanup", databaseErrorCode: audioMetadataError.code ?? null } })
+    }
     const { error: cleanupError } = await admin.from("voice_recording_sessions").delete().eq("id", session.id).eq("user_id", context.user.id)
     if (cleanupError) {
       await recordSecureDiagnostic({ event: "transcription_session_cleanup_failed", level: "warning", route: "/api/transcribe", userId: context.user.id, requestId, statusCode: 200, details: { stage: "session_cleanup", databaseErrorCode: cleanupError.code ?? null } })
