@@ -58,6 +58,13 @@ export function ChatMessage({
   const holdTriggered = React.useRef(false)
 
   React.useEffect(() => {
+    if (!previewAttachment) return
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") setPreviewAttachment(null) }
+    document.addEventListener("keydown", onKeyDown)
+    return () => document.removeEventListener("keydown", onKeyDown)
+  }, [previewAttachment])
+
+  React.useEffect(() => {
     if (!mobileActionsOpen) return
     const onPointerDown = (event: PointerEvent) => {
       if (!(event.target instanceof Node) || !userMessageRef.current?.contains(event.target)) setMobileActionsOpen(false)
@@ -74,6 +81,14 @@ export function ChatMessage({
   if (message.role === "user") {
     const userText = message.parts.filter((part): part is Extract<ChatMessagePart, { type: "text" }> => part.type === "text" && !part.text.startsWith(PRIVATE_ATTACHMENT_CONTEXT_PREFIX)).map((part) => part.text).join("")
     const privateAttachmentContext = message.parts.filter((part): part is Extract<ChatMessagePart, { type: "text" }> => part.type === "text" && part.text.startsWith(PRIVATE_ATTACHMENT_CONTEXT_PREFIX)).map((part) => part.text.slice(PRIVATE_ATTACHMENT_CONTEXT_PREFIX.length)).join("\n\n")
+    const getAttachmentPreviewText = (filename: string) => {
+      const marker = "[Attachment: " + filename + "]\n"
+      const start = privateAttachmentContext.indexOf(marker)
+      if (start < 0) return privateAttachmentContext
+      const contentStart = start + marker.length
+      const next = privateAttachmentContext.indexOf("\n\n[Attachment: ", contentStart)
+      return privateAttachmentContext.slice(contentStart, next < 0 ? undefined : next).trim()
+    }
     const fileParts = message.parts.filter((part): part is Extract<ChatMessagePart, { type: "file" }> => part.type === "file")
     const imageParts = fileParts.filter((part) => part.mediaType.startsWith("image/"))
     const documentParts = fileParts.filter((part) => !part.mediaType.startsWith("image/"))
@@ -120,7 +135,7 @@ export function ChatMessage({
                   </button>)}
                 </div>}
                 {documentParts.length > 0 && <div className="mb-2 flex flex-col gap-1.5">
-                  {documentParts.map((part, index) => <button type="button" key={`${part.filename ?? "file"}-${index}`} onClick={() => setPreviewAttachment({ url: part.url, filename: part.filename ?? "Attached file", mediaType: part.mediaType, previewText: privateAttachmentContext })} aria-label={"Preview " + (part.filename ?? "attached file")} className="flex max-w-64 items-center gap-2 rounded-xl border border-border/70 bg-background/60 px-3 py-2 text-left hover:bg-background">
+                  {documentParts.map((part, index) => <button type="button" key={`${part.filename ?? "file"}-${index}`} onClick={() => setPreviewAttachment({ url: part.url, filename: part.filename ?? "Attached file", mediaType: part.mediaType, previewText: getAttachmentPreviewText(part.filename ?? "") })} aria-label={"Preview " + (part.filename ?? "attached file")} className="flex max-w-64 items-center gap-2 rounded-xl border border-border/70 bg-background/60 px-3 py-2 text-left hover:bg-background">
                     <FileTextIcon className="size-4 shrink-0 text-muted-foreground" /><span className="truncate text-xs">{part.filename ?? "Attached file"}</span>
                   </button>)}
                 </div>}
