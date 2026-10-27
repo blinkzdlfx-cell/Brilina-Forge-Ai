@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import {
-  ArchiveIcon, ArchiveRestoreIcon, CheckIcon, EllipsisIcon, FileSearchIcon,
+  ArchiveIcon, ArchiveRestoreIcon, EllipsisIcon,
   LogOutIcon, MessageSquareIcon, PencilIcon, PinIcon, PlusIcon, SearchIcon,
   SettingsIcon, Trash2Icon, UploadIcon, XIcon,
 } from "lucide-react"
@@ -36,7 +36,7 @@ function StyledModal({ title, children, onClose }: { title: string; children: Re
 
 export function ChatSidebar(props: ChatSidebarProps) {
   const router = useRouter()
-  const { state, isMobile, setOpenMobile, setOpen } = useSidebar()
+  const { state, isMobile, setOpenMobile } = useSidebar()
   const [menuFor, setMenuFor] = React.useState<string | null>(null)
   const [modal, setModal] = React.useState<"recent" | "pinned" | "search" | "settings" | "rename" | "delete" | null>(null)
   const [selected, setSelected] = React.useState<SidebarConversation | null>(null)
@@ -53,6 +53,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
   const sorted = [...visible].sort((a,b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
   const searchResults = sorted.filter((item) => item.title.toLowerCase().includes(search.toLowerCase()))
   const closeModal = React.useCallback(() => { setModal(null); setSelected(null); setAvatarError("") }, [])
+  React.useEffect(() => { void fetch("/api/profile/avatar").then(async (response) => { if (!response.ok) return; const result = await response.json() as { url?: string; email?: string }; setAvatarUrl(result.url ?? ""); setProfileEmail(result.email ?? "") }).catch(() => undefined) }, [])
   const selectConversation = (id: string) => { props.onSelectConversation(id); closeModal(); if (isMobile) setOpenMobile(false) }
   const startRename = (item: SidebarConversation) => { setSelected(item); setRenameValue(item.title); setMenuFor(null); setModal("rename") }
   const startDelete = (item: SidebarConversation) => { setSelected(item); setMenuFor(null); setModal("delete") }
@@ -92,14 +93,13 @@ export function ChatSidebar(props: ChatSidebarProps) {
       </div>}
     </SidebarMenuItem>
   )
-  const iconOnly = state === "collapsed" && !isMobile
 
   return <>
     <Sidebar collapsible="icon" aria-label="Conversation sidebar">
       <SidebarHeader className="p-3">
         <div className="flex h-9 items-center gap-2 group-data-[collapsible=icon]:justify-center">
           <span className="min-w-0 flex-1 truncate text-sm font-semibold group-data-[collapsible=icon]:hidden">Brilina Forge</span>
-          <button type="button" aria-label="New chat" title="New chat" onClick={props.onNewChat} className="rounded-lg p-2 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"><PlusIcon className="size-4" /></button>
+          <button type="button" aria-label="New chat" title="New chat" onClick={props.onNewChat} className="rounded-lg p-2 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground group-data-[collapsible=icon]:hidden"><PlusIcon className="size-4" /></button>
         </div>
         <div className="hidden gap-1 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center">
           <button type="button" aria-label="New chat" title="New chat" onClick={props.onNewChat} className="rounded-lg p-2 hover:bg-sidebar-accent"><PlusIcon className="size-4" /></button>
@@ -110,7 +110,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel className="flex items-center justify-between"><span>{props.showArchived ? "Archived" : "Recent"}</span><button type="button" aria-label={props.showArchived ? "Show recent conversations" : "Show archived conversations"} title={props.showArchived ? "Recent" : "Archive"} className="rounded p-1 text-muted-foreground hover:text-foreground group-data-[collapsible=icon]:hidden" onClick={props.onToggleArchived}>{props.showArchived ? <MessageSquareIcon className="size-3.5" /> : <ArchiveIcon className="size-3.5" />}</button></SidebarGroupLabel>
+          <SidebarGroupLabel className="flex items-center justify-between"><span>{props.showArchived ? "Archived" : "Recent"}</span><button type="button" aria-label={props.showArchived ? "Show recent conversations" : "Show archived conversations"} title={props.showArchived ? "Recent" : "Archive"} className="rounded p-1 text-muted-foreground hover:text-foreground group-data-[collapsible=icon]:hidden" onClick={props.onToggleArchived}><EllipsisIcon className="size-3.5" /></button></SidebarGroupLabel>
           <SidebarMenu>
             {props.isLoading ? Array.from({ length: 5 }, (_, i) => <SidebarMenuItem key={i} className="px-2 py-1 group-data-[collapsible=icon]:hidden"><div className="flex items-center gap-2"><Skeleton className="size-4 rounded-md" /><Skeleton className={`h-4 ${i % 2 ? "w-2/3" : "w-4/5"}`} /></div></SidebarMenuItem>) : <>
               {!props.showArchived && pinned.length > 0 && <><p className="px-3 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground group-data-[collapsible=icon]:hidden">Pinned</p>{pinned.map(renderConversation)}<p className="px-3 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground group-data-[collapsible=icon]:hidden">Recent</p></>}
