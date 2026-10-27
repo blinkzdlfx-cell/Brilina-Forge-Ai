@@ -13,7 +13,7 @@ import {
 const MAX_RECORDING_BYTES = 20 * 1024 * 1024
 const MAX_RECORDING_MS = 10 * 60 * 1000
 const AUTO_STOP_MARGIN_MS = 1000
-const TRANSCRIPTION_TIMEOUT_MS = 45_000
+const TRANSCRIPTION_TIMEOUT_MS = 180_000
 const MAX_IMAGE_COUNT = 3
 const MAX_ATTACHMENT_COUNT = 5
 const MAX_IMAGE_FILE_BYTES = 1024 * 1024
@@ -191,14 +191,30 @@ export function PromptForm({
     try {
       const sessionId = recordingSessionRef.current
       if (!sessionId) throw new Error("Recording session expired. Record a new message.")
+      const mimeType = (blob.type || "audio/webm").split(";")[0].toLowerCase()
+      const initialized = await fetch("/api/transcribe/upload-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, mimeType, size: blob.size }),
+        signal: controller.signal,
+      })
+      const initPayload = await initialized.json().catch(() => null) as
+        | { upload?: { signedUrl?: unknown; storagePath?: unknown }; error?: unknown }
+        | null
+      if (!initialized.ok || typeof initPayload?.upload?.signedUrl !== "string" || typeof initPayload.upload.storagePath !== "string") {
+        throw new Error(typeof initPayload?.error === "string" ? initPayload.error : "Could not initialize private audio upload.")
+      }
+      const transfer = await fetch(initPayload.upload.signedUrl, {
+        method: "POST",
+        headers: { "Content-Type": mimeType, "x-upsert": "false" },
+        body: blob,
+        signal: controller.signal,
+      })
+      if (!transfer.ok) throw new Error("Could not upload audio to private storage. Retry the recording.")
       const response = await fetch("/api/transcribe", {
         method: "POST",
-        headers: {
-          "X-Recording-Session": sessionId,
-          "Content-Type": blob.type || "application/octet-stream",
-          "X-Audio-Filename": `recording.${getAudioExtension(blob.type || "audio/webm")}`,
-        },
-        body: blob,
+        headers: { "X-Recording-Session": sessionId, "Content-Type": "application/json" },
+        body: JSON.stringify({ storagePath: initPayload.upload.storagePath, mimeType, size: blob.size }),
         signal: controller.signal,
       })
       const result = (await response.json().catch(() => null)) as
