@@ -71,7 +71,7 @@ Scope:
 - Verify save/retry behavior cannot duplicate user turns or assistant messages, and that a refresh/reopen restores the correct conversation and context.
 - Fix the Vercel request-size conflict for file and audio uploads. Prefer authenticated direct-to-private-Supabase-Storage upload with server-verified ownership and metadata, then send compact file references to application routes. Never put base64 file data in chat messages.
 - Preserve MIME/signature validation, per-user storage paths, short-lived signed URLs, deletion/cleanup, size limits, and private bucket policies.
-- Inspect migrations `0001`–`0006` and live migration state read-only. Do not apply or alter production migrations without separate explicit approval.
+- Inspect migrations `0001`–`0007` and live migration state read-only. Do not apply or alter production migrations without separate explicit approval.
 - Exercise network loss, duplicate submission, partial persistence, oversized payload, unauthorized file access, and cleanup failures using custom test scripts where useful.
 
 Acceptance:
