@@ -31,7 +31,7 @@ export async function DELETE(_request: Request, context: { params: Promise<{ fil
   const { data: file, error } = await admin.from("files")
     .select("id, bucket_id, storage_path")
     .eq("id", fileId).eq("user_id", auth.user.id).maybeSingle()
-  if (error || !file || file.bucket_id !== BUCKET) return Response.json({ error: "file_not_found" }, { status: 404 })
+  if (error || !file || !ALLOWED_BUCKETS.has(file.bucket_id)) return Response.json({ error: "file_not_found" }, { status: 404 })
 
   const { error: storageError } = await admin.storage.from(file.bucket_id).remove([file.storage_path])
   if (storageError) return Response.json({ error: "file_delete_failed" }, { status: 502 })
