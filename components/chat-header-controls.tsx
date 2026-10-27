@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-router importimport { ArchiveIcon, Ellipsis, PinIcon, SquarePen, Trash2Icon, XIcon } from "lucide-react"
+import { ArchiveIcon, Ellipsis, PinIcon, SquarePen, Trash2Icon, XIcon } from "lucide-react"
 
 import { type GatewayModel } from "@/lib/models"
 import { ModelSelect } from "@/components/model-select"
@@ -30,7 +30,7 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
 }
 
 export function ChatHeaderControls({ onNewChat, models, model, onModelChange, activeConversation = null, onRenameConversation, onPinConversation, onArchiveConversation, onDeleteConversation }: ChatHeaderControlsProps) {
-router instance  const [menuOpen, setMenuOpen] = React.useState(false)
+  const [menuOpen, setMenuOpen] = React.useState(false)
   const [modal, setModal] = React.useState<"rename" | "delete" | null>(null)
   const [title, setTitle] = React.useState(activeConversation?.title ?? "")
   const menuRef = React.useRef<HTMLDivElement>(null)
@@ -62,7 +62,7 @@ router instance  const [menuOpen, setMenuOpen] = React.useState(false)
           {menuItem("Delete", <Trash2Icon className="size-4" />, () => setModal("delete"), true)}
           <div className="my-1 border-t border-border" />
         </>}
-remove settings and logout      </div>}
+      </div>}
     </div>
     {modal === "rename" && activeConversation && <Modal title="Rename conversation" onClose={() => setModal(null)}><form onSubmit={(event) => { event.preventDefault(); if (!title.trim()) return; onRenameConversation?.(title.trim()); setModal(null) }} className="space-y-4"><input autoFocus maxLength={300} value={title} onChange={(event) => setTitle(event.target.value)} aria-label="Conversation name" className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" /><div className="flex justify-end gap-2"><button type="button" onClick={() => setModal(null)} className="rounded-xl px-4 py-2 text-sm hover:bg-muted">Cancel</button><button type="submit" disabled={!title.trim()} className="rounded-xl bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50">Save</button></div></form></Modal>}
     {modal === "delete" && activeConversation && <Modal title="Delete conversation?" onClose={() => setModal(null)}><p className="text-sm text-muted-foreground">Delete “{activeConversation.title}” and its messages? This cannot be undone.</p><div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setModal(null)} className="rounded-xl px-4 py-2 text-sm hover:bg-muted">Cancel</button><button type="button" onClick={() => { onDeleteConversation?.(); setModal(null) }} className="rounded-xl bg-destructive px-4 py-2 text-sm text-destructive-foreground">Delete</button></div></Modal>}
