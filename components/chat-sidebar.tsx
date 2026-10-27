@@ -1,5 +1,7 @@
 "use client"
 
+/* eslint-disable @next/next/no-img-element */
+
 import * as React from "react"
 import {
   ArchiveIcon, ArchiveRestoreIcon, EllipsisIcon,
@@ -123,7 +125,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border p-2">
         <button type="button" onClick={() => void openSettings()} className="flex w-full items-center gap-2 rounded-xl p-2 text-left hover:bg-sidebar-accent group-data-[collapsible=icon]:hidden" aria-label="Profile and settings" title="Profile and settings">
-          {avatarUrl ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={avatarUrl} alt="" className="size-8 rounded-full object-cover" /> : <span className="flex size-8 items-center justify-center rounded-full bg-muted"><SettingsIcon className="size-4" /></span>}
+          {avatarUrl ? <img src={avatarUrl} alt="" className="size-8 rounded-full object-cover" /> : <span className="flex size-8 items-center justify-center rounded-full bg-muted"><SettingsIcon className="size-4" /></span>}
           <span className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden"><span className="block text-sm font-medium">Settings</span><span className="block truncate text-xs text-muted-foreground">Profile and account</span></span>
         </button>
       </SidebarFooter>
