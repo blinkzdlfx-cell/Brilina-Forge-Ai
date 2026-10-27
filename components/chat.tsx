@@ -218,9 +218,10 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
         setPendingAttachmentMessage({ text: text || "Please analyze the attached files.", files, stage: "Sending…" })
         const visibleParts = [
           { type: "text" as const, text: text || "Please analyze the attached files." },
+          ...(attachmentText.length ? [{ type: "text" as const, text: "[[FORGE_PRIVATE_ATTACHMENT_CONTEXT]]\\n" + attachmentText.join("") }] : []),
           ...uploadedAttachments.map((file) => ({ type: "file" as const, url: "/api/files/" + encodeURIComponent(file.id) + "/view", mediaType: file.mimeType, filename: file.name })),
         ]
-        void sendMessage({ parts: visibleParts } as ChatUIMessage, { body: { model: resolvedModel, attachmentContext: attachmentText.join("").slice(0, 12000) } })
+        void sendMessage({ parts: visibleParts } as ChatUIMessage, { body: { model: resolvedModel } })
         setPendingAttachmentMessage(null)
       } else {
         void sendMessage({ text }, { body: { model: resolvedModel } })
