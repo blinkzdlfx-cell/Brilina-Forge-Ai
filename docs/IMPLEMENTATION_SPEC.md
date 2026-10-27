@@ -774,7 +774,7 @@ The public site is a Brilina Dev platform landing page, not a default sign-in sc
 
 ## 19. Sequential implementation order and batch gates
 
-The eleven numbered stages remain product requirements, not a statement that every stage is pending. Before implementation, audit current source, tests, migrations, and live evidence. **Do not reimplement Foundation Batch 1 by default:** current `main` already contains Tavily aggregate bounds, protected chat/transcription route checks, and four Supabase migrations. Confirm exact gaps and live acceptance before deciding what remains.
+The eleven numbered stages remain product requirements, not a statement that every stage is pending. Before implementation, audit current source, tests, migrations, and live evidence. **Do not reimplement Foundation Batch 1 by default:** current `main` already contains Tavily aggregate bounds, protected chat/transcription route checks, and the private audio-storage migration; live migration history has eight entries. Confirm exact gaps and live acceptance before deciding what remains.
 
 Delivery order is sequential; do not run parallel implementation workstreams:
 
