@@ -6,7 +6,7 @@ import { useChat } from "@ai-sdk/react"
 import { lastAssistantMessageIsCompleteWithToolCalls } from "ai"
 
 import { type GatewayModel } from "@/lib/models"
-import { CogIcon } from "lucide-react"
+import { CogIcon, RotateCcwIcon, XIcon } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { uploadPrivateFile } from "@/lib/direct-upload"
 import { type ChatUIMessage } from "@/tools"
@@ -395,7 +395,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
               <MessageScroller className="min-h-0 flex-1">
                 <MessageScrollerViewport>
                   <MessageScrollerContent className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-6 pb-6 pt-16">
-                    {pendingAttachmentMessage && <MessageScrollerItem messageId="pending-attachment"><Message align="end"><MessageContent><div className="flex w-full justify-end"><div className="max-w-[80%] rounded-3xl border border-border bg-muted px-3 py-2.5 text-sm"><div className="whitespace-pre-wrap">{pendingAttachmentMessage.text}</div><div className="mt-2 flex flex-wrap gap-2">{pendingAttachmentMessage.files.map((file, index) => <div key={file.name + file.size + index} className="flex items-center gap-2 rounded-lg border border-border/70 bg-background/60 px-2 py-1.5 text-xs"><span className="max-w-40 truncate">{file.name}</span></div>)}</div><div role="status" className="mt-2 flex items-center gap-2 text-xs text-muted-foreground"><span className="size-3 animate-spin rounded-full border-2 border-current border-t-transparent" />{pendingAttachmentMessage.stage}</div></div></div></MessageContent></Message></MessageScrollerItem>}
+                    {pendingAttachmentMessage && <MessageScrollerItem messageId="pending-attachment"><Message align="end"><MessageContent><div className="flex w-full justify-end"><div className="max-w-[80%] rounded-3xl border border-border bg-muted px-3 py-2.5 text-sm"><div className="whitespace-pre-wrap">{pendingAttachmentMessage.text}</div><div className="mt-2 flex flex-wrap gap-2">{pendingAttachmentMessage.files.map((file, index) => <div key={file.name + file.size + index} className="flex items-center gap-2 rounded-lg border border-border/70 bg-background/60 px-2 py-1.5 text-xs"><span className="max-w-40 truncate">{file.name}</span></div>)}</div><div role="status" className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">{pendingAttachmentMessage.stage.toLowerCase().includes("failed") ? <XIcon className="size-3.5 text-destructive" /> : <span className="size-3 animate-spin rounded-full border-2 border-current border-t-transparent" />}{pendingAttachmentMessage.stage}{pendingAttachmentMessage.stage.toLowerCase().includes("failed") && <button type="button" onClick={() => { const pending = pendingAttachmentMessage; setPendingAttachmentMessage(null); setAttachmentError(""); void handleSendMessage(pending.text, pending.files) }} className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 hover:bg-background"><RotateCcwIcon className="size-3" />Retry</button>}</div></div></div></MessageContent></Message></MessageScrollerItem>}
                     {messages.map((message) => (
                       <MessageScrollerItem
                         key={message.id}
