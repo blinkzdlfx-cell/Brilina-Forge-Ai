@@ -118,7 +118,7 @@ export async function POST(request: Request, context: RouteContext) {
       // A concurrent request may have inserted this same client ID, or claimed
       // the sequence number first. Distinguish those cases before retrying.
       const { data: duplicate } = await auth.supabase.from("messages")
-        .select("id, client_message_id, role, parts, status")
+        .select("id, client_message_id, sequence_number, role, parts, status")
         .eq("conversation_id", conversationId)
         .eq("client_message_id", message.client_message_id)
         .maybeSingle()
