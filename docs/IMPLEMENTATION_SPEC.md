@@ -789,3 +789,16 @@ Delivery order is sequential; do not run parallel implementation workstreams:
 | F | Implement the Agent Workflow System using one approved workflow engine; finish end-to-end acceptance | State/retry/recovery/RLS tests pass; CI and live tests reported separately |
 
 Stage 5 (Agent Workflow System) remains dependent on stable runtime, auth, and persistence. The final acceptance stage covers the entire application. Do not deploy, alter production DNS, apply live migrations, or begin GitHub integration without separate explicit approval.
+
+## UI interaction batch — implementation in review
+
+The current feature branch `feat/chat-attachments-actions-sidebar-profile` adds:
+
+- Private file attachments displayed as user-message image previews or document cards, with processing progress and extraction text stored as a hidden message part rather than rendered in the user bubble.
+- A plus-button attachment menu for images and documents, retaining current MIME and size limits.
+- Conversation URLs at `/c/<conversation-id>`, owner-checked deep links, URL updates when opening/creating conversations, and conversation restoration on refresh.
+- User prompt actions (desktop hover; mobile long-press) for copy, edit, share, and mobile text selection; assistant response actions for copy, share, and try again.
+- Sidebar conversation menus for rename, pin, archive/restore, and delete, with styled confirmation/edit modals; collapsed rail controls for new chat, search, pinned, and recent conversations.
+- Sidebar shimmer placeholders, a gear-style conversation loading state, and profile settings with private profile-photo upload plus log out.
+
+The changes are not merged. CI and preview acceptance are required before approval. Profile photos are stored in the existing private `forge-private-files` bucket under an owner-scoped path and displayed through short-lived signed URLs. No production deployment or schema migration is part of this batch.
