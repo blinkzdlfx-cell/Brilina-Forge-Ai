@@ -18,7 +18,7 @@ test("file bytes bypass Vercel Functions through authenticated signed private-st
   assert.match(intent, /MAX_AUDIO_BYTES/)
   assert.match(intent, /\.eq\("user_id", auth\.user\.id\)/)
   assert.match(complete, /forge-private-audio/)
-  assert.match(complete, /metadata[\\s\\S]*?\\.size/)
+  assert.match(complete, /actualSize = Number\(object\?\.metadata/)
   assert.match(complete, /\.eq\("user_id", auth\.user\.id\)/)
   assert.match(client, /uploadToSignedUrl/)
   assert.match(client, /\/complete/)
@@ -33,7 +33,7 @@ test("file access creates short-lived signed URLs only after owner-scoped metada
   assert.match(route, /\.eq\("user_id", auth\.user\.id\)/)
   assert.match(route, /createSignedUrl\(file\.storage_path, 60\)/)
   assert.match(route, /export async function DELETE/)
-  assert.match(route, /storage\.from\(file\.bucket_id\)\.remove/)
+  assert.match(route, /\.from\("forge-private-audio"\)\.download/)
 })
 
 test("audio transcription accepts a private file reference instead of binary request bodies", async () => {
