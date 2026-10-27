@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { ArrowUpIcon, ImagePlusIcon, MicIcon, SquareIcon, XIcon, RotateCcwIcon } from "lucide-react"
+import { uploadPrivateFile } from "@/lib/direct-upload"
 
 import {
   InputGroup,
@@ -97,6 +98,7 @@ export function PromptForm({
   const streamRef = React.useRef<MediaStream | null>(null)
   const chunksRef = React.useRef<Blob[]>([])
   const audioBlobRef = React.useRef<Blob | null>(null)
+  const audioFileIdRef = React.useRef<string | null>(null)
   const intentRef = React.useRef<TranscriptionIntent>("insert")
   const abortRef = React.useRef<AbortController | null>(null)
   const audioContextRef = React.useRef<AudioContext | null>(null)
@@ -191,14 +193,21 @@ export function PromptForm({
     try {
       const sessionId = recordingSessionRef.current
       if (!sessionId) throw new Error("Recording session expired. Record a new message.")
+      let audioFileId = audioFileIdRef.current
+      if (!audioFileId) {
+        const mimeType = (blob.type || "audio/webm").split(";")[0].toLowerCase()
+        const audioFile = new File([blob], `recording.${getAudioExtension(mimeType)}`, { type: mimeType })
+        const uploadedAudio = await uploadPrivateFile(audioFile, null, "audio")
+        audioFileId = uploadedAudio.id
+        audioFileIdRef.current = audioFileId
+      }
       const response = await fetch("/api/transcribe", {
         method: "POST",
         headers: {
           "X-Recording-Session": sessionId,
-          "Content-Type": blob.type || "application/octet-stream",
-          "X-Audio-Filename": `recording.${getAudioExtension(blob.type || "audio/webm")}`,
+          "Content-Type": "application/json",
         },
-        body: blob,
+        body: JSON.stringify({ fileId: audioFileId }),
         signal: controller.signal,
       })
       const result = (await response.json().catch(() => null)) as
@@ -218,6 +227,7 @@ export function PromptForm({
         maxLengthReachedRef.current = false
       }
       audioBlobRef.current = null
+      audioFileIdRef.current = null
       recordingSessionRef.current = null
       setHasAudio(false)
       setVoiceState("idle")
@@ -400,6 +410,9 @@ export function PromptForm({
     recorderRef.current = null
     chunksRef.current = []
     audioBlobRef.current = null
+    const uploadedAudioId = audioFileIdRef.current
+    audioFileIdRef.current = null
+    if (uploadedAudioId) void fetch("/api/files/" + encodeURIComponent(uploadedAudioId), { method: "DELETE" }).catch(() => undefined)
     setHasAudio(false)
     setVoiceState("idle")
     setVoiceError("")

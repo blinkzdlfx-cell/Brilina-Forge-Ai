@@ -64,37 +64,80 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   const ids = messages.map((message) => message.client_message_id)
-  const { data: existing, error: existingError } = await auth.supabase
+  const { data: existingRows, error: existingError } = await auth.supabase
     .from("messages")
-    .select("client_message_id, sequence_number")
+    .select("id, client_message_id, sequence_number, role, parts, status")
     .eq("conversation_id", conversationId)
     .in("client_message_id", ids.length ? ids : ["__none__"])
   if (existingError) return Response.json({ error: "messages_unavailable" }, { status: 500 })
 
-  const existingIds = new Set((existing ?? []).map((row) => row.client_message_id))
-  const missing = messages.filter((message) => !existingIds.has(message.client_message_id))
-  const highestSequence = Math.max(-1, ...(existing ?? []).map((row) => Number(row.sequence_number)))
-  const { data: allRows, error: allError } = await auth.supabase
+  const existingByClientId = new Map((existingRows ?? []).map((row) => [row.client_message_id, row]))
+  const { data: lastRows, error: lastError } = await auth.supabase
     .from("messages")
     .select("sequence_number")
     .eq("conversation_id", conversationId)
     .order("sequence_number", { ascending: false })
     .limit(1)
-  if (allError) return Response.json({ error: "messages_unavailable" }, { status: 500 })
-  let nextSequence = Math.max(highestSequence, Number(allRows?.[0]?.sequence_number ?? -1)) + 1
+  if (lastError) return Response.json({ error: "messages_unavailable" }, { status: 500 })
+  let nextSequence = Number(lastRows?.[0]?.sequence_number ?? -1) + 1
+  let saved = 0
 
-  if (missing.length) {
-    const inserts = missing.map((message) => ({
-      id: crypto.randomUUID(),
-      conversation_id: conversationId,
-      role: message.role,
-      parts: message.parts,
-      sequence_number: nextSequence++,
-      status: message.status,
-      client_message_id: message.client_message_id,
-    }))
-    const { error } = await auth.supabase.from("messages").insert(inserts)
-    if (error) return Response.json({ error: "message_save_failed" }, { status: 500 })
+  for (const message of messages) {
+    const existing = existingByClientId.get(message.client_message_id)
+    if (existing) {
+      // A stable assistant ID may first be saved as interrupted and later be
+      // completed after a retry. Refresh that same row rather than duplicating it.
+      if (existing.role === "assistant" &&
+          (existing.status !== message.status || JSON.stringify(existing.parts) !== JSON.stringify(message.parts))) {
+        const { error: updateError } = await auth.supabase.from("messages")
+          .update({ parts: message.parts, status: message.status })
+          .eq("id", existing.id).eq("conversation_id", conversationId)
+        if (updateError) return Response.json({ error: "message_update_failed" }, { status: 500 })
+      }
+      continue
+    }
+
+    let inserted = false
+    for (let attempt = 0; attempt < 3 && !inserted; attempt++) {
+      const { error: insertError } = await auth.supabase.from("messages").insert({
+        id: crypto.randomUUID(),
+        conversation_id: conversationId,
+        role: message.role,
+        parts: message.parts,
+        sequence_number: nextSequence,
+        status: message.status,
+        client_message_id: message.client_message_id,
+      })
+      if (!insertError) {
+        nextSequence += 1
+        saved += 1
+        inserted = true
+        continue
+      }
+
+      if (insertError.code !== "23505") {
+        return Response.json({ error: "message_save_failed" }, { status: 500 })
+      }
+
+      // A concurrent request may have inserted this same client ID, or claimed
+      // the sequence number first. Distinguish those cases before retrying.
+      const { data: duplicate } = await auth.supabase.from("messages")
+        .select("id, client_message_id, sequence_number, role, parts, status")
+        .eq("conversation_id", conversationId)
+        .eq("client_message_id", message.client_message_id)
+        .maybeSingle()
+      if (duplicate) {
+        existingByClientId.set(message.client_message_id, duplicate)
+        inserted = true
+        continue
+      }
+      const { data: latest, error: latestError } = await auth.supabase.from("messages")
+        .select("sequence_number").eq("conversation_id", conversationId)
+        .order("sequence_number", { ascending: false }).limit(1)
+      if (latestError) return Response.json({ error: "messages_unavailable" }, { status: 500 })
+      nextSequence = Number(latest?.[0]?.sequence_number ?? -1) + 1
+    }
+    if (!inserted) return Response.json({ error: "message_save_conflict_retry" }, { status: 409 })
   }
 
   const title = messages.map((message) => message.role === "user" ? extractTitle(message.parts) : null).find(Boolean)
@@ -104,5 +147,5 @@ export async function POST(request: Request, context: RouteContext) {
     await auth.supabase.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", conversationId).eq("user_id", auth.user.id)
   }
 
-  return Response.json({ success: true, saved: missing.length, total: messages.length })
+  return Response.json({ success: true, saved, total: messages.length })
 }

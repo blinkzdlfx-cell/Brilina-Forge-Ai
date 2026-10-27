@@ -134,9 +134,10 @@ export async function POST(request: Request, context: { params: Promise<{ fileId
 
   const admin = createAdminClient()
   const { data: file, error } = await admin.from("files")
-    .select("id, user_id, bucket_id, storage_path, original_name, mime_type, size_bytes")
+    .select("id, user_id, bucket_id, storage_path, original_name, mime_type, size_bytes, status")
     .eq("id", fileId).eq("user_id", auth.user.id).maybeSingle()
   if (error || !file || file.bucket_id !== BUCKET) return Response.json({ error: "file_not_found" }, { status: 404 })
+  if (file.status !== "uploaded" && file.status !== "ready") return Response.json({ error: "file_upload_not_complete" }, { status: 409 })
   if (file.size_bytes > MAX_SOURCE_BYTES) return Response.json({ error: "file_too_large_for_processing" }, { status: 413 })
 
   let body: unknown
@@ -150,6 +151,13 @@ export async function POST(request: Request, context: { params: Promise<{ fileId
   if (downloadError || !object) return Response.json({ error: "file_read_failed" }, { status: 502 })
   const bytes = new Uint8Array(await object.arrayBuffer())
   if (bytes.byteLength !== file.size_bytes || bytes.byteLength > MAX_SOURCE_BYTES) return Response.json({ error: "file_size_mismatch" }, { status: 413 })
+  const signatureMatches =
+    file.mime_type === "application/pdf" ? bytes.length >= 5 && new TextDecoder().decode(bytes.slice(0, 5)) === "%PDF-" :
+    file.mime_type === "image/png" ? bytes.length >= 8 && [137, 80, 78, 71, 13, 10, 26, 10].every((value, index) => bytes[index] === value) :
+    file.mime_type === "image/jpeg" ? bytes.length >= 3 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255 :
+    file.mime_type === "image/webp" ? bytes.length >= 12 && new TextDecoder().decode(bytes.slice(0, 4)) === "RIFF" && new TextDecoder().decode(bytes.slice(8, 12)) === "WEBP" :
+    file.mime_type === DOCX_TYPE ? bytes.length >= 4 && bytes[0] === 80 && bytes[1] === 75 && bytes[2] === 3 && bytes[3] === 4 : true
+  if (!signatureMatches) return Response.json({ error: "file_signature_mismatch" }, { status: 415 })
 
   try {
     let text: string

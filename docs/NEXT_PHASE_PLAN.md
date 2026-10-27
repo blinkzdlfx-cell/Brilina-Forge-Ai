@@ -38,7 +38,7 @@ Repository inspection of `main` at `87f117c674c0c805177eb248724e92c81a594844` es
 - The GitHub Vercel status check for the current `main` commit reports success. That is deployment-check evidence, not a substitute for authenticated live workflow tests.
 - The current CI runs unit tests, lint, typecheck, the Cloudflare Worker build, and a Docker build. It did not explicitly run `pnpm build` as a named native Next.js/Vercel check; Batch 1 adds that independent check.
 - README and implementation-spec sections still contain older Cloudflare-primary assumptions and need reconciliation with this decision.
-- Current upload and audio routes proxy binary bodies through the application server. Their 10 MiB and 20 MiB application limits conflict with the documented Vercel Function payload limit; this is a concrete reliability gap.
+- At the Batch 2 baseline, upload and transcription routes proxied binary bodies through Vercel Functions. Batch 2 replaces the active UI path with signed direct-to-private-Supabase-Storage uploads and compact file IDs; the legacy `/api/files` binary route now rejects old proxy uploads. This source change does not prove migration `0007` is applied to the live Supabase project.
 - Password recovery, MFA/AAL2, owner account creation, and the previous accepted auth tests are preserved. Do not repeat or redesign them without evidence of a regression.
 
 Status reporting must distinguish **source present**, **automated test present/passing**, **Vercel/preview verified**, **live provider verified**, and **unknown**. CI, a deployment status check, source code, and a live acceptance test are different forms of evidence.
@@ -79,6 +79,13 @@ Acceptance:
 - Large file/audio bytes no longer rely on exceeding Vercel Function request limits.
 - Conversation history and file access remain user-isolated.
 - Production schema, data, secrets, and DNS remain unchanged unless separately approved.
+
+Implementation evidence on the Batch 2 branch (not yet live-verified):
+- Signed upload intents and a completion check send binary bytes directly from the browser to Supabase Storage; chat and transcription routes use compact file IDs.
+- Repository migration `0007_private_audio_storage.sql` defines a private 20 MiB audio bucket and has not been applied to production.
+- Processing validates supported file signatures and checks ownership; file deletion handles both private buckets.
+- Message persistence retries sequence conflicts and updates an existing assistant row when its stable ID changes state.
+- CI and authorized preview verification are pending.
 
 ### Batch 3 — Provider workflows: search, transcription, vision and documents
 

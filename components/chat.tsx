@@ -6,6 +6,7 @@ import { useChat } from "@ai-sdk/react"
 import { lastAssistantMessageIsCompleteWithToolCalls } from "ai"
 
 import { type GatewayModel } from "@/lib/models"
+import { uploadPrivateFile } from "@/lib/direct-upload"
 import { type ChatUIMessage } from "@/tools"
 import { ChatMessage } from "@/components/chat-message"
 import { ChatHeaderControls } from "@/components/chat-header-controls"
@@ -71,6 +72,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
   const conversationIdRef = React.useRef<string | null>(null)
   React.useEffect(() => { conversationIdRef.current = conversationId }, [conversationId])
   const [attachmentError, setAttachmentError] = React.useState("")
+  const sendPreparationRef = React.useRef(false)
   const [collapseExpandedMessagesKey, setCollapseExpandedMessagesKey] = React.useState(0)
 
   const {
@@ -128,6 +130,9 @@ export function Chat({ models }: { models: GatewayModel[] }) {
 
   const handleSendMessage = React.useCallback(
     async (text: string, files: File[] = []) => {
+      if (sendPreparationRef.current) return
+      sendPreparationRef.current = true
+      try {
       let requestModel = resolvedModel
       const imageFiles = files.filter((file) => file.type.startsWith("image/"))
       const totalImageCount = recentImageCount + imageFiles.length
@@ -169,31 +174,39 @@ export function Chat({ models }: { models: GatewayModel[] }) {
       if (files.length > 0) {
         const attachmentText: string[] = []
         for (const file of files) {
-          const form = new FormData()
-          form.set("file", file)
-          if (targetId) form.set("conversationId", targetId)
-          const uploaded = await fetch("/api/files", { method: "POST", body: form })
-          const uploadPayload = await uploaded.json() as { file?: { id: string; original_name: string }; error?: string }
-          if (!uploaded.ok || !uploadPayload.file?.id) {
-            setAttachmentError("Could not securely upload " + file.name + ". " + (uploadPayload.error ?? "Try again."))
+          let uploadedFile: { id: string; original_name: string }
+          try {
+            uploadedFile = await uploadPrivateFile(file, targetId, "file")
+          } catch (cause) {
+            setAttachmentError("Could not securely upload " + file.name + ". " + (cause instanceof Error ? cause.message : "Try again."))
             return
           }
           const image = file.type.startsWith("image/")
-          const processed = await fetch("/api/files/" + encodeURIComponent(uploadPayload.file.id) + "/process", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ mode: image ? "analyze" : "extract", prompt: text || "Describe this image accurately, including visible text and important details.", model: requestModel }),
-          })
-          const processPayload = await processed.json() as { text?: string; error?: string }
-          if (!processed.ok || typeof processPayload.text !== "string") {
-            await fetch("/api/files/" + encodeURIComponent(uploadPayload.file.id), { method: "DELETE" }).catch(() => undefined)
-            setAttachmentError("Could not process " + file.name + ". " + (processPayload.error ?? "Try a supported file or try again."))
+          let processPayload: { text?: string; error?: string }
+          try {
+            const processed = await fetch("/api/files/" + encodeURIComponent(uploadedFile.id) + "/process", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ mode: image ? "analyze" : "extract", prompt: text || "Describe this image accurately, including visible text and important details.", model: requestModel }),
+            })
+            processPayload = await processed.json() as { text?: string; error?: string }
+            if (!processed.ok || typeof processPayload.text !== "string") {
+              await fetch("/api/files/" + encodeURIComponent(uploadedFile.id), { method: "DELETE" }).catch(() => undefined)
+              setAttachmentError("Could not process " + file.name + ". " + (processPayload.error ?? "Try a supported file or try again."))
+              return
+            }
+          } catch {
+            await fetch("/api/files/" + encodeURIComponent(uploadedFile.id), { method: "DELETE" }).catch(() => undefined)
+            setAttachmentError("The connection was interrupted while processing " + file.name + ". Upload it again and retry.")
             return
           }
-          attachmentText.push("\n\n[Attachment: " + file.name + "]\n" + processPayload.text.slice(0, 9000))
+          attachmentText.push("\n\n[Attachment: " + uploadedFile.original_name + "]\n" + processPayload.text.slice(0, 9000))
         }
         void sendMessage({ text: (text || "Please analyze the attached files.") + attachmentText.join("") }, { body: { model: resolvedModel } })
       } else {
         void sendMessage({ text }, { body: { model: resolvedModel } })
+      }
+      } finally {
+        sendPreparationRef.current = false
       }
     },
     [models, recentImageCount, resolvedModel, sendMessage, refreshConversations]
