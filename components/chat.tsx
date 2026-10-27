@@ -236,9 +236,9 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
         void sendMessage({ text }, { body: { model: resolvedModel } })
         return true
       } finally {
-        if (!submissionQueued) forceScrollToLatestRef.current = false
-        setIsPreparingAttachments(false)
         sendPreparationRef.current = false
+        setIsPreparingAttachments(false)
+        if (!submissionQueued) forceScrollToLatestRef.current = false
       }
     },
     [models, recentImageCount, resolvedModel, sendMessage, refreshConversations]
