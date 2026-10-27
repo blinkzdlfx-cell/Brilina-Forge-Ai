@@ -144,6 +144,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
       setIsPreparingAttachments(files.length > 0)
       forceScrollToLatestRef.current = true
       shouldAutoFollowRef.current = true
+      let submissionQueued = false
       try {
         let requestModel = resolvedModel
         const imageFiles = files.filter((file) => file.type.startsWith("image/"))
@@ -226,13 +227,16 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
             ...(attachmentText.length ? [{ type: "text" as const, text: "[[FORGE_PRIVATE_ATTACHMENT_CONTEXT]]\n" + (text.trim() ? "" : "The user attached files without an additional message. Analyze the attachments and provide a useful response.\n") + attachmentText.join("") }] : []),
             ...uploadedAttachments.map((file) => ({ type: "file" as const, url: "/api/files/" + encodeURIComponent(file.id) + "/view", mediaType: file.mimeType, filename: file.name })),
           ]
+          submissionQueued = true
           void sendMessage({ parts: visibleParts } as ChatUIMessage, { body: { model: resolvedModel } })
           return true
         }
 
+        submissionQueued = true
         void sendMessage({ text }, { body: { model: resolvedModel } })
         return true
       } finally {
+        if (!submissionQueued) forceScrollToLatestRef.current = false
         setIsPreparingAttachments(false)
         sendPreparationRef.current = false
       }
@@ -299,7 +303,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
       setConversationNotice("")
       setConversationLoading(false)
     } catch (cause) { setConversationNotice(cause instanceof Error ? cause.message : "Could not load this conversation."); setConversationLoading(false) }
-  }, [conversationId, conversationLoading, isBusy, setMessages, stop])
+  }, [conversationLoading, isBusy, setMessages, stop])
   React.useEffect(() => {
     if (!initialConversationId) return
     let cancelled = false
