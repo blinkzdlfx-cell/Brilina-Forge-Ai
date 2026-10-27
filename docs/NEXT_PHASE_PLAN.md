@@ -27,7 +27,7 @@ Official Vercel documentation currently describes a 4.5 MB request/response payl
 
 ## 2. Evidence-based current-state audit
 
-Repository inspection of `main` at `87f117c674c0c805177eb248724e92c81a594844` established:
+Repository inspection of `main` at `d9763d0c84b02984fab6006045b7815b46369404` established:
 
 - `lib/tavily-search.mjs` already has bounded results, excerpt and aggregate context caps, response-body limits, URL normalization/deduplication, bounded retry handling, and safe errors.
 - `app/api/chat/route.ts` uses AI SDK streaming (`streamText` / UI message stream conversion), authenticates users, and applies request/context/tool bounds. It declares `maxDuration = 30`.
@@ -36,9 +36,9 @@ Repository inspection of `main` at `87f117c674c0c805177eb248724e92c81a594844` es
 - Conversation lifecycle, idempotent message saves, private file APIs, upload-first attachment references, and TXT/Markdown/CSV/JSON/HTML/PDF/DOCX plus image processing were merged in PR #30. Audit these against current source and tests; do not rebuild them by default.
 - Supabase migrations `0001` through `0006` exist in the repository. Their presence does not prove that all migrations are applied to the live project or that current live RLS/storage policies are correct.
 - The GitHub Vercel status check for the current `main` commit reports success. That is deployment-check evidence, not a substitute for authenticated live workflow tests.
-- The current CI runs unit tests, lint, typecheck, the Cloudflare Worker build, and a Docker build. It did not explicitly run `pnpm build` as a named native Next.js/Vercel check; Batch 1 adds that independent check.
+- Current GitHub Actions CI passed unit/contract tests, lint, typecheck, the native Next.js production build, the retained Cloudflare Worker build, and the Cloud Run container build for the merged `main` commit. The Vercel commit status check is successful. This is automated/deployment evidence, not a substitute for authenticated manual acceptance.
 - README and implementation-spec sections still contain older Cloudflare-primary assumptions and need reconciliation with this decision.
-- At the Batch 2 baseline, upload and transcription routes proxied binary bodies through Vercel Functions. Batch 2 replaces the active UI path with signed direct-to-private-Supabase-Storage uploads and compact file IDs; the legacy `/api/files` binary route now rejects old proxy uploads. This source change does not prove migration `0007` is applied to the live Supabase project.
+- At the Batch 2 baseline, upload and transcription routes proxied binary bodies through Vercel Functions. The active UI path now uses signed direct-to-private-Supabase-Storage uploads and compact file IDs; the legacy `/api/files` binary route rejects old proxy uploads. Migration `0007_private_audio_storage.sql` was explicitly approved and applied to the live Supabase project; read-only checks confirmed project health and the expected migration history.
 - Password recovery, MFA/AAL2, owner account creation, and the previous accepted auth tests are preserved. Do not repeat or redesign them without evidence of a regression.
 
 Status reporting must distinguish **source present**, **automated test present/passing**, **Vercel/preview verified**, **live provider verified**, and **unknown**. CI, a deployment status check, source code, and a live acceptance test are different forms of evidence.
@@ -80,13 +80,22 @@ Acceptance:
 - Conversation history and file access remain user-isolated.
 - Production schema, data, secrets, and DNS remain unchanged unless separately approved.
 
-Implementation evidence on the Batch 2 branch (not yet live-verified):
-- Signed upload intents and a completion check send binary bytes directly from the browser to Supabase Storage; chat and transcription routes use compact file IDs.
-- Repository migration `0007_private_audio_storage.sql` defines a private 20 MiB audio bucket. It was applied to Supabase project `jjocynbtuafdokkjemym` on 2026-10-27; read-only checks confirmed the bucket is private, the 20 MiB limit and MIME allowlist are set, and four owner-folder policies exist.
-- PR #33 was merged as `ab35de3ed9b5db62866b7f4d780c92d7e8104df7`. GitHub Actions passed unit/contract tests, lint, typecheck, native Next.js build, Worker build, and Cloud Run container build. Vercel preview was Ready; authenticated live acceptance checks remain pending.
-- Processing validates supported file signatures and checks ownership; file deletion handles both private buckets.
-- Message persistence retries sequence conflicts and updates an existing assistant row when its stable ID changes state.
-- CI and authorized preview verification are pending.
+Implementation and current acceptance evidence (updated 2026-10-28):
+- PR #33 was merged as `ab35de3ed9b5db62866b7f4d780c92d7e8104df7`. Signed upload intents and a completion check send binary bytes directly from the browser to private Supabase Storage; chat/transcription routes use compact file IDs. The live `forge-private-audio` bucket is private, limited to 20 MiB, and has owner-folder policies.
+- The approved `0007_private_audio_storage.sql` migration is present in live migration history. No database migration or schema change is part of the current follow-up.
+- PR #36 was merged into `main` as `d9763d0c84b02984fab6006045b7815b46369404`. GitHub Actions CI passed unit/contract tests, lint, typecheck, native Next.js build, Worker build, and Cloud Run container build. The Vercel status check is successful.
+- Owner-tested and reported working on mobile: basic new-chat messaging, document upload, sidebar rename/pin/archive/delete, mobile loading indicator, profile/settings modal, long-press prompt actions, and existing authentication.
+- Owner has not yet tested: conversation URL/refresh restoration, collapsed-sidebar controls/search, desktop layout/actions, message copy/edit/share/regenerate, or the full scroll-follow behavior.
+- Remaining issues reported by the owner: menu/popover outside-tap dismissal, duplicate password/logout actions in the chat header, missing full-size attachment preview, inconsistent image upload/processing behavior, visible default text on attachment-only sends, attachment progress presentation, redundant reload on the already-active conversation, and chat auto-scroll/streaming presentation.
+- The follow-up branch `fix/attachment-preview-dismissal-chat-streaming` is intended to close these gaps. Its CI/preview/manual acceptance is still pending. Do not mark Batch 2 fully accepted or start Batch 3 until those checks and the owner's retest are complete.
+
+### Batch 1 and Batch 2 acceptance ledger
+
+| Area | Current evidence | Remaining gate |
+|---|---|---|
+| Batch 1 streaming/runtime foundation | CI and native/Worker/container builds pass; owner confirmed basic send/respond | Verify stream follows only when near bottom, manual scroll is respected, and cancellation/error behavior remains sound |
+| Batch 2 persistence/private upload | Direct private Storage flow and migration history verified; document upload reported working | Recheck image upload/process failures, retries, private previews, refresh/reopen persistence, and attachment-only sends |
+| Chat/sidebar interaction work included in Batch 2 acceptance | Main CI/Vercel status pass; owner confirmed core sidebar and profile/auth behavior | Follow-up branch must pass CI and preview; owner tests deep links, collapsed rail, message actions, desktop, and scroll behavior |
 
 ### Batch 3 — Provider workflows: search, transcription, vision and documents
 
@@ -155,6 +164,13 @@ Never deploy to production, change DNS, alter production secrets, apply live Sup
 
 When documents conflict, preserve the user's current approved architecture and verify source before changing code. Update the owning document rather than creating competing plans.
 
-## UI interaction batch — branch under verification
+## Batch 2 follow-up — attachment UX, dismissal, and chat scrolling
 
-Branch: `feat/chat-attachments-actions-sidebar-profile` (not merged). This batch combines attachment bubble/progress UX, the plus attachment menu, conversation deep links and refresh restoration, user/assistant message actions, sidebar menus and collapsed controls, shimmer/gear loading states, and profile settings/photo upload. Existing private-storage size/MIME limits and invite-only access remain in force. CI and preview/manual acceptance must pass before merging; no production deployment or schema migration is included.
+**Merged baseline:** PR #36, commit `d9763d0c84b02984fab6006045b7815b46369404`. CI and Vercel status checks passed.  
+**Follow-up branch:** `fix/attachment-preview-dismissal-chat-streaming` (not merged; verification pending).
+
+The follow-up keeps all selected attachments visible in the composer until upload and processing succeeds, shows a minimal spinner instead of a separate pending chat bubble, preserves files for retry on failure, adds full-size image and supported document previews, and avoids auto-generating visible text for attachment-only messages. It also dismisses menus on outside tap/Escape, keeps password/logout inside settings, avoids reloading the active conversation, and improves auto-follow while preserving manual scrolling.
+
+No production deployment, DNS change, secret change, or live Supabase migration is part of this follow-up. Preserve the existing private buckets, owner checks, MIME and size limits, invite-only access, and native AI SDK streaming.
+
+**Gate before Batch 3:** CI and preview pass; the owner retests attachments, menu dismissal, attachment-only send, conversation switching/refresh, collapsed sidebar, message actions, mobile/desktop behavior, and streaming scroll-follow. Update both this roadmap and `docs/IMPLEMENTATION_SPEC.md` with actual evidence before declaring Batch 2 accepted.
