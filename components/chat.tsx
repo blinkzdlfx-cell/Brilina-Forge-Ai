@@ -346,7 +346,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
     }
     viewport.addEventListener("scroll", onScroll, { passive: true })
     return () => viewport.removeEventListener("scroll", onScroll)
-  }, [conversationLoading, messages.length > 0])
+  }, [conversationLoading, messages.length])
 
   React.useEffect(() => {
     const viewport = messageViewportRef.current
