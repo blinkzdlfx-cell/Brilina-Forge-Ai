@@ -50,8 +50,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
   const [avatarError, setAvatarError] = React.useState("")
   const [profileEmail, setProfileEmail] = React.useState("")
   const avatarInput = React.useRef<HTMLInputElement>(null)
-  const sidebarRootRef = React.useRef<HTMLDivElement>(null)
-  const visible = props.conversations.filter((c) => props.showArchived ? Boolean(c.archived_at) : !c.archived_at)
+remove root ref  const visible = props.conversations.filter((c) => props.showArchived ? Boolean(c.archived_at) : !c.archived_at)
   const pinned = visible.filter((c) => c.is_pinned && !c.archived_at)
   const regular = visible.filter((c) => !c.is_pinned || Boolean(c.archived_at))
   const sorted = [...visible].sort((a,b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
@@ -60,10 +59,9 @@ export function ChatSidebar(props: ChatSidebarProps) {
   React.useEffect(() => {
     if (!menuFor && !recentMenuOpen) return
     const onPointerDown = (event: PointerEvent) => {
-      if (!(event.target instanceof Node) || !sidebarRootRef.current?.contains(event.target)) {
-        setMenuFor(null)
-        setRecentMenuOpen(false)
-      }
+      const target = event.target instanceof Element ? event.target : null
+      if (menuFor && !target?.closest(`[data-sidebar-menu-trigger="${menuFor}"], [data-sidebar-menu-popup="${menuFor}"]`)) setMenuFor(null)
+      if (recentMenuOpen && !target?.closest("[data-recent-options-trigger], [data-recent-options-popup]")) setRecentMenuOpen(false)
     }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") { setMenuFor(null); setRecentMenuOpen(false) }
@@ -106,8 +104,8 @@ export function ChatSidebar(props: ChatSidebarProps) {
         <MessageSquareIcon className="size-4 shrink-0" /><span className="truncate">{item.title}</span>
       </SidebarMenuButton>
       {!item.archived_at && <button type="button" className={`absolute right-8 top-1.5 rounded-md p-1 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground ${item.is_pinned ? "opacity-100" : "opacity-0 group-hover/item:opacity-100 group-focus-within/item:opacity-100"} group-data-[collapsible=icon]:hidden`} aria-label={item.is_pinned ? "Unpin conversation" : "Pin conversation"} title={item.is_pinned ? "Unpin" : "Pin"} onClick={() => props.onPinConversation(item)}><PinIcon className={`size-3.5 ${item.is_pinned ? "fill-current" : ""}`} /></button>}
-      <button type="button" aria-label={`Actions for ${item.title}`} aria-expanded={menuFor === item.id} onClick={() => setMenuFor((current) => current === item.id ? null : item.id)} className={`absolute right-1 top-1.5 rounded-md p-1 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground focus-visible:opacity-100 group-data-[collapsible=icon]:hidden ${menuFor === item.id ? "opacity-100" : "opacity-0 group-hover/item:opacity-100 group-focus-within/item:opacity-100"}`}><EllipsisIcon className="size-4" /></button>
-      {menuFor === item.id && <div role="menu" className="absolute right-1 top-9 z-50 min-w-40 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl">
+      <button type="button" data-sidebar-menu-trigger={item.id} aria-label={`Actions for ${item.title}`} aria-expanded={menuFor === item.id} onClick={() => setMenuFor((current) => current === item.id ? null : item.id)} className={`absolute right-1 top-1.5 rounded-md p-1 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground focus-visible:opacity-100 group-data-[collapsible=icon]:hidden ${menuFor === item.id ? "opacity-100" : "opacity-0 group-hover/item:opacity-100 group-focus-within/item:opacity-100"}`}><EllipsisIcon className="size-4" /></button>
+      {menuFor === item.id && <div role="menu" data-sidebar-menu-popup={item.id} className="absolute right-1 top-9 z-50 min-w-40 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl">
         {!item.archived_at && <button role="menuitem" type="button" onClick={() => { props.onPinConversation(item); setMenuFor(null) }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-muted"><PinIcon className="size-4" />{item.is_pinned ? "Unpin" : "Pin"}</button>}
         <button role="menuitem" type="button" onClick={() => startRename(item)} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-muted"><PencilIcon className="size-4" />Rename</button>
         <button role="menuitem" type="button" onClick={() => { props.onArchiveConversation(item); setMenuFor(null) }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-muted">{item.archived_at ? <ArchiveRestoreIcon className="size-4" /> : <ArchiveIcon className="size-4" />}{item.archived_at ? "Restore" : "Archive"}</button>
@@ -117,7 +115,6 @@ export function ChatSidebar(props: ChatSidebarProps) {
   )
 
   return <>
-    <div ref={sidebarRootRef} className="contents">
     <Sidebar collapsible="icon" aria-label="Conversation sidebar">
       <SidebarHeader className="p-3">
         <div className="flex h-9 items-center gap-2 group-data-[collapsible=icon]:justify-center">
@@ -133,7 +130,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel className="flex items-center justify-between"><span>{props.showArchived ? "Archived" : "Recent"}</span><div className="relative group-data-[collapsible=icon]:hidden"><button type="button" aria-label="Recent section options" title="Options" className="rounded p-1 text-muted-foreground hover:text-foreground" onClick={() => setRecentMenuOpen((open) => !open)}><EllipsisIcon className="size-3.5" /></button>{recentMenuOpen && <div role="menu" className="absolute right-0 top-full z-50 mt-1 min-w-32 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl"><button type="button" role="menuitem" onClick={() => { props.onToggleArchived(); setRecentMenuOpen(false) }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-muted">{props.showArchived ? <MessageSquareIcon className="size-4" /> : <ArchiveIcon className="size-4" />}{props.showArchived ? "Recent" : "Archive"}</button></div>}</div></SidebarGroupLabel>
+          <SidebarGroupLabel className="flex items-center justify-between"><span>{props.showArchived ? "Archived" : "Recent"}</span><div className="relative group-data-[collapsible=icon]:hidden"><button type="button" data-recent-options-trigger aria-label="Recent section options" title="Options" className="rounded p-1 text-muted-foreground hover:text-foreground" onClick={() => setRecentMenuOpen((open) => !open)}><EllipsisIcon className="size-3.5" /></button>{recentMenuOpen && <div role="menu" data-recent-options-popup className="absolute right-0 top-full z-50 mt-1 min-w-32 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl"><button type="button" role="menuitem" onClick={() => { props.onToggleArchived(); setRecentMenuOpen(false) }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-muted">{props.showArchived ? <MessageSquareIcon className="size-4" /> : <ArchiveIcon className="size-4" />}{props.showArchived ? "Recent" : "Archive"}</button></div>}</div></SidebarGroupLabel>
           <SidebarMenu>
             {props.isLoading ? Array.from({ length: 5 }, (_, i) => <SidebarMenuItem key={i} className="px-2 py-1 group-data-[collapsible=icon]:hidden"><div className="flex items-center gap-2"><Skeleton className="size-4 rounded-md" /><Skeleton className={`h-4 ${i % 2 ? "w-2/3" : "w-4/5"}`} /></div></SidebarMenuItem>) : <>
               {!props.showArchived && pinned.length > 0 && <><p className="px-3 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground group-data-[collapsible=icon]:hidden">Pinned</p>{pinned.map(renderConversation)}<p className="px-3 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground group-data-[collapsible=icon]:hidden">Recent</p></>}
@@ -151,7 +148,6 @@ export function ChatSidebar(props: ChatSidebarProps) {
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
-    </div>
 
     {(modal === "recent" || modal === "pinned" || modal === "search") && <StyledModal title={modal === "recent" ? "Recent conversations" : modal === "pinned" ? "Pinned conversations" : "Search conversations"} onClose={closeModal}>
       {modal === "search" && <label className="mb-3 flex items-center gap-2 rounded-xl border border-border px-3"><SearchIcon className="size-4 text-muted-foreground" /><input autoFocus value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search chats…" className="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none" /></label>}
