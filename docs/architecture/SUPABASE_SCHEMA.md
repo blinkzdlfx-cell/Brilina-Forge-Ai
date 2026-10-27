@@ -41,4 +41,4 @@ All four tables have RLS enabled. Anonymous table privileges are revoked. Authen
 - [ ] Verify authenticated clients cannot insert/update/delete `files` or `user_access`.
 - [ ] Run Supabase database security advisors and resolve applicable findings.
 
-Storage bucket creation and object policies are deferred to Stage 6. Conversation persistence integration is deferred to Stage 4.
+Private storage configuration is defined by migrations `0005_conversation_controls_private_storage.sql` (private 10 MiB file bucket) and `0007_private_audio_storage.sql` (private 20 MiB audio bucket). The audio migration must be applied to the intended preview/test database before testing direct audio uploads; do not apply it to production without separate explicit approval. These files do not prove that either bucket or its policies exist in a live Supabase project.
