@@ -292,7 +292,6 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
   React.useEffect(() => {
     if (!initialConversationId) return
     let cancelled = false
-    setConversationLoading(true)
     fetch("/api/conversations/" + encodeURIComponent(initialConversationId)).then(async (response) => {
       const payload = await response.json() as { messages?: ChatMessageType[] }
       if (!response.ok || !payload.messages) throw new Error("Could not load this conversation.")
