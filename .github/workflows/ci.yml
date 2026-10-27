@@ -35,7 +35,7 @@ jobs:
       - name: Install dependencies and refresh lockfile
         run: pnpm install --no-frozen-lockfile
 
-      - name: Unit tests
+      - name: Unit and contract tests
         run: pnpm test
 
       - name: Lint
@@ -44,9 +44,16 @@ jobs:
       - name: Type check
         run: pnpm typecheck
 
+      # Vercel deploys the native Next.js application, not the OpenNext Worker output.
+      # Keep this check separate so Vercel compatibility is verified directly in CI.
+      - name: Native Next.js production build (Vercel runtime)
+        run: pnpm build
+
+      # Retain the legacy Cloudflare deployment build as a separate compatibility check.
       - name: Cloudflare Worker build
         run: pnpm build:worker
 
+      # Keep the existing portable Node container proof available for comparison.
       - name: Cloud Run container build
         run: docker build --tag brilina-forge-ai:ci .
 
@@ -60,5 +67,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add pnpm-lock.yaml
-          git commit -m "chore: refresh pnpm lockfile for Cloudflare"
+          git commit -m "chore: refresh pnpm lockfile"
           git push
