@@ -6,7 +6,6 @@ import { getRuntimeEnv } from "@/lib/runtime-env"
 import { recordSecureDiagnostic } from "@/lib/secure-diagnostic"
 
 const MAX_AUDIO_BYTES = 20 * 1024 * 1024
-const MAX_REQUEST_BYTES = MAX_AUDIO_BYTES + 1024
 const MAX_RECORDING_MS = 10 * 60 * 1000
 const MAX_RETRY_AGE_MS = 5 * 60 * 1000
 const ALLOWED_AUDIO_TYPES = new Set([
