@@ -1,13 +1,13 @@
 # Brilina Forge AI
 
-A streaming AI assistant built with Next.js, the AI SDK, and shadcn components. The app is configured to run on Cloudflare Workers using the OpenNext Cloudflare adapter.
+A streaming AI assistant built with Next.js, the AI SDK, and shadcn components. Vercel is the primary production application runtime; the existing Cloudflare Worker remains available as a fallback, and Cloudflare Workers AI is called over HTTPS for configured model tasks.
 
 ## AI, search, and voice input
 
 - **Chat model:** Cloudflare Workers AI `@cf/zai-org/glm-4.7-flash`, accessed through Cloudflare's OpenAI-compatible endpoint. Responses stream through the AI SDK; request bytes, recent context, model output, and tool steps are bounded.
 - **Image understanding:** Optional vision models are Cloudflare Workers AI `@cf/qwen/qwen3.8-27b` and Groq `qwen/qwen3.8-27b`. Groq's `meta-models/muse-spark-open` is a limited preview and is shown only when explicitly configured. The app accepts PNG/JPEG/WebP images up to 1 MiB each and 3 MiB total. The Cloudflare vision route is limited to one image per request; Groq Qwen is limited to three. These are application limits unless a stricter provider limit applies.
 - **Web search:** Tavily's independent search API. The server bounds response bodies, retries one transient failure within the timeout budget, deduplicates normalized HTTPS source URLs, truncates excerpts, marks partial results, and returns safe errors.
-- **Voice input:** Authenticated users receive a server-created recording session before the browser records audio. The server enforces a maximum 15-minute session, and the browser automatically stops and transcribes at the limit. Stop inserts the transcript without sending; Send transcribes and sends through the existing chat flow; X cancels. No recording timer is displayed. Failed audio can be retried once during the current page session.
+- **Voice input:** Authenticated users receive a server-created recording session before the browser records audio. The server enforces a maximum 10-minute session, and the browser automatically stops and transcribes at the limit. Stop inserts the transcript without sending; Send transcribes and sends through the existing chat flow; X cancels. No recording timer is displayed. Failed audio can be retried once during the current page session.
 - **Citations:** The assistant is instructed to cite web-supported claims with Markdown links to the exact URLs returned by Tavily.
 - **Existing UI:** The responsive chat UI, streamed messages, model selector, GitHub repository lookup, and interactive question tool are retained.
 
@@ -27,7 +27,7 @@ Copy `.env.example` to `.env.local` for local development. Create a Supabase pro
 | `TAVILY_API_KEY` | For web search | Tavily API key |
 | `GROQ_API_KEY` | Optional | Enables the Groq Qwen vision model; keep server-side only |
 | `GROQ_VISION_SECONDARY_MODEL` | Optional, preview access only | Set to `meta-models/muse-spark-open` only if the Groq account is approved for this preview model |
-| `VOICE_TRANSCRIPTION_ENABLED` | Explicit opt-in | Set to `true` to enable transcription; authenticated users only, with a 15-minute browser recording limit and automatic transcription at the limit |
+| `VOICE_TRANSCRIPTION_ENABLED` | Explicit opt-in | Set to `true` to enable transcription; authenticated users only, with a 10-minute browser recording limit and automatic transcription at the limit |
 | `NEXTJS_ENV` | Local development | OpenNext environment mode |
 
 The `GET /api/health` endpoint reports whether the AI and search credentials are configured. It never returns their values.
@@ -46,34 +46,38 @@ pnpm dev
 
 Voice input requires microphone permission and a secure context (HTTPS; localhost is accepted for local development). Recordings are uploaded to the application's server endpoint and transcribed by Cloudflare Workers AI. Failed audio is retained in page memory for retry during the current session; durable server-side audio storage is planned separately and is not yet implemented. The endpoint limits uploads to 20 MB and transcription attempts time out after 45 seconds. Workers AI usage is subject to Cloudflare's current allocation and applicable plan pricing.
 
-## Cloudflare Workers deployment
+## Vercel deployment
 
-The repository includes `wrangler.jsonc` and `open-next.config.ts`. OpenNext converts the Next.js build output into a Worker. The Worker name is `brilina-forge-ai`.
+Vercel is the primary production application runtime. The repository's Git integration deploys the production branch to Vercel and can create preview deployments for pull requests. Configure environment variables in the Vercel project settings; never commit secrets.
 
-1. Connect this repository to Cloudflare Workers Builds, with `main` as the production branch.
-2. Use Node.js 22 and pnpm 10 for the build environment.
-3. Set the install command to `pnpm install --no-frozen-lockfile` for the first build. GitHub Actions refreshes and commits `pnpm-lock.yaml` after the checks pass; subsequent builds can use frozen-lockfile installs.
-4. Set the build command to `pnpm build:worker` for a build-only check. The separate `pnpm deploy` command deploys using Wrangler credentials and should only be used when intentionally deploying through Wrangler.
-5. Configure `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` in the Cloudflare Workers Builds environment (these public values are compiled into the browser bundle). Add `SUPABASE_SERVICE_ROLE_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AI_API_TOKEN`, and `TAVILY_API_KEY` as encrypted server-side Worker secrets/environment variables. Never put the service-role key in a `NEXT_PUBLIC_` variable or in `wrangler.jsonc`.
-6. Voice transcription requires an authenticated, eligible user. The feature flag is an operational kill switch; keep it unset or false when transcription should be disabled. The maximum recording duration is 15 minutes, enforced server-side with automatic transcription at the limit; no recording timer is displayed in the frontend.
-7. After deployment, open `/api/health`. Test a current-events question and confirm that the response includes source links. Test voice input separately after enabling it safely.
+1. Use Node.js 22 and pnpm 10.
+2. Set the production branch to `main` and confirm the GitHub repository connection.
+3. Configure `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` for build and runtime.
+4. Configure `SUPABASE_SERVICE_ROLE_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AI_API_TOKEN`, `TAVILY_API_KEY`, and any enabled `GROQ_API_KEY` / `GEMINI_API_KEY` as server-side environment variables. Never prefix server secrets with `NEXT_PUBLIC_`.
+5. Set `VOICE_TRANSCRIPTION_ENABLED=true` only when authenticated transcription is intended to be available.
+6. After a preview deployment, test `/api/health`, authenticated chat streaming, Tavily search, voice transcription, conversation history, private file access, and document/image workflows with an authorized test account.
+
+**Vercel payload caution:** Vercel Functions document a 4.5 MB request/response payload limit. Application-level 10 MiB file and 20 MiB audio limits do not guarantee that these binary uploads can be proxied through Vercel routes. Use the verified authenticated private Supabase Storage upload flow for large files/audio, and pass compact file references to processing routes. Do not assume an oversized request reaches route-level validation.
+
+The Cloudflare Worker configuration is intentionally retained as a fallback. `pnpm build:worker`, `pnpm preview`, and `pnpm deploy` are legacy Worker scripts; use them only to verify or intentionally deploy that fallback, not as the primary Vercel deployment command. No production DNS change or Cloudflare decommissioning is implied.
 
 Scripts:
 
-- `pnpm test` — unit tests.
+- `pnpm test` — unit and contract tests.
 - `pnpm lint` — ESLint.
 - `pnpm typecheck` — TypeScript checks.
-- `pnpm build:worker` — Next.js production build and OpenNext Cloudflare adaptation.
-- `pnpm preview` — Build and preview in the Workers runtime.
-- `pnpm deploy` — Build and deploy through Wrangler.
+- `pnpm build` — native Next.js production build used by Vercel.
+- `pnpm build:worker` — separate OpenNext Cloudflare Worker build.
+- `pnpm preview` — preview the Worker build.
+- `pnpm deploy` — intentionally deploy through Wrangler; do not use for normal production release.
 
 ## CI
 
-GitHub Actions runs unit tests, lint, type checking, and the Cloudflare Worker build on pushes to `main` and pull requests. It installs with `pnpm install --no-frozen-lockfile` so it can refresh the lockfile after dependency changes. On successful pushes to `main`, it commits a changed lockfile so Cloudflare can subsequently use frozen-lockfile installs.
+GitHub Actions runs unit/contract tests, lint, type checking, the native Next.js production build, the retained Cloudflare Worker build, and a Docker compatibility build on pushes to `main` and pull requests. The Vercel Git integration has its own deployment status; CI success and deployment status do not replace live authenticated workflow acceptance.
 
 ## Security notes
 
-The chat and transcription endpoints require a server-verified Supabase session and a fresh, non-disabled user_access row. The owner admin page and every admin API require the trusted owner marker and server-verified AAL2. Voice recording uses a server-created session with server timestamps, a 15-minute maximum, automatic stop/transcription at the limit, and no visible frontend timer. Upload size and session attempts are bounded; audio is not durably stored. The planned public Brilina Dev landing page and invite-only Forge workspace/domain separation are described in `docs/IMPLEMENTATION_SPEC.md`. The search tool treats retrieved webpage text as untrusted and limits the amount of data passed to the model.
+The chat and transcription endpoints require a server-verified Supabase session and a fresh, non-disabled user_access row. The owner admin page and every admin API require the trusted owner marker and server-verified AAL2. Voice recording uses a server-created session with server timestamps, a 10-minute maximum, automatic stop/transcription at the limit, and no visible frontend timer. Upload size and session attempts are bounded; audio is not durably stored. The public Brilina Dev landing page and invite-only Forge workspace/domain separation are described in `docs/IMPLEMENTATION_SPEC.md`. The search tool treats retrieved webpage text as untrusted and limits the amount of data passed to the model.
 
 ## Implementation and planning documents
 
