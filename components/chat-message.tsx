@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { CheckIcon, ChevronDown, CopyIcon, FileTextIcon, PencilIcon, Share2Icon, TextSelectIcon } from "lucide-react"
+import { CheckIcon, ChevronDown, CopyIcon, FileTextIcon, PencilIcon, Share2Icon, TextSelectIcon, XIcon } from "lucide-react"
 
 import {
   type ChatMessagePart,
@@ -50,14 +50,30 @@ export function ChatMessage({
     userMessageExpansion.key === collapseExpandedMessagesKey &&
     userMessageExpansion.expanded
   const [mobileActionsOpen, setMobileActionsOpen] = React.useState(false)
+  const [previewAttachment, setPreviewAttachment] = React.useState<{ url: string; filename: string; mediaType: string; previewText: string } | null>(null)
   const [editing, setEditing] = React.useState(false)
   const [editText, setEditText] = React.useState("")
   const longPressTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const userTextRef = React.useRef<HTMLDivElement>(null)
   const holdTriggered = React.useRef(false)
 
+  React.useEffect(() => {
+    if (!mobileActionsOpen) return
+    const onPointerDown = (event: PointerEvent) => {
+      if (!(event.target instanceof Node) || !userMessageRef.current?.contains(event.target)) setMobileActionsOpen(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") setMobileActionsOpen(false) }
+    document.addEventListener("pointerdown", onPointerDown, true)
+    document.addEventListener("keydown", onKeyDown)
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true)
+      document.removeEventListener("keydown", onKeyDown)
+    }
+  }, [mobileActionsOpen])
+
   if (message.role === "user") {
     const userText = message.parts.filter((part): part is Extract<ChatMessagePart, { type: "text" }> => part.type === "text" && !part.text.startsWith(PRIVATE_ATTACHMENT_CONTEXT_PREFIX)).map((part) => part.text).join("")
+    const privateAttachmentContext = message.parts.filter((part): part is Extract<ChatMessagePart, { type: "text" }> => part.type === "text" && part.text.startsWith(PRIVATE_ATTACHMENT_CONTEXT_PREFIX)).map((part) => part.text.slice(PRIVATE_ATTACHMENT_CONTEXT_PREFIX.length)).join("\n\n")
     const fileParts = message.parts.filter((part): part is Extract<ChatMessagePart, { type: "file" }> => part.type === "file")
     const imageParts = fileParts.filter((part) => part.mediaType.startsWith("image/"))
     const documentParts = fileParts.filter((part) => !part.mediaType.startsWith("image/"))
@@ -91,21 +107,22 @@ export function ChatMessage({
     const clearLongPress = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); longPressTimer.current = null }
 
     return (
+      <>
       <Message align="end">
         <MessageContent>
           <div ref={userMessageRef} className="group/user-message flex w-full flex-col items-end" onTouchStart={beginLongPress} onTouchEnd={clearLongPress} onTouchMove={clearLongPress} onContextMenu={(event) => { if (window.matchMedia("(hover: none)").matches) { event.preventDefault(); setMobileActionsOpen(true) } }}>
             <Bubble align="end" variant="muted" className="max-w-full">
               <BubbleContent className="max-w-full">
                 {imageParts.length > 0 && <div className="mb-2 flex flex-wrap justify-end gap-2">
-                  {imageParts.map((part, index) => <div key={`${part.filename ?? "image"}-${index}`} className="max-w-full overflow-hidden rounded-xl border border-border/60 bg-background/50">
+                  {imageParts.map((part, index) => <button type="button" key={`${part.filename ?? "image"}-${index}`} onClick={() => setPreviewAttachment({ url: part.url, filename: part.filename ?? "Attached image", mediaType: part.mediaType, previewText: "" })} aria-label={"Preview " + (part.filename ?? "attached image")} className="max-w-full overflow-hidden rounded-xl border border-border/60 bg-background/50 text-left">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={part.url} alt={part.filename ?? "Attached image"} className="max-h-56 max-w-full object-contain" />
-                  </div>)}
+                  </button>)}
                 </div>}
                 {documentParts.length > 0 && <div className="mb-2 flex flex-col gap-1.5">
-                  {documentParts.map((part, index) => <div key={`${part.filename ?? "file"}-${index}`} className="flex max-w-64 items-center gap-2 rounded-xl border border-border/70 bg-background/60 px-3 py-2 text-left">
+                  {documentParts.map((part, index) => <button type="button" key={`${part.filename ?? "file"}-${index}`} onClick={() => setPreviewAttachment({ url: part.url, filename: part.filename ?? "Attached file", mediaType: part.mediaType, previewText: privateAttachmentContext })} aria-label={"Preview " + (part.filename ?? "attached file")} className="flex max-w-64 items-center gap-2 rounded-xl border border-border/70 bg-background/60 px-3 py-2 text-left hover:bg-background">
                     <FileTextIcon className="size-4 shrink-0 text-muted-foreground" /><span className="truncate text-xs">{part.filename ?? "Attached file"}</span>
-                  </div>)}
+                  </button>)}
                 </div>}
                 {editing ? <form className="min-w-52 space-y-2" onSubmit={(event) => { event.preventDefault(); if (editText.trim()) { onEdit?.(editText.trim()); setEditing(false); setMobileActionsOpen(false) } }}>
                   <textarea autoFocus value={editText} onChange={(event) => setEditText(event.target.value)} className="min-h-20 w-full resize-y rounded-lg border border-border bg-background p-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Edit prompt" />
@@ -129,6 +146,18 @@ export function ChatMessage({
           </div>
         </MessageContent>
       </Message>
+      {previewAttachment && <div role="dialog" aria-modal="true" aria-label={"Preview " + previewAttachment.filename} className="fixed inset-0 z-[110] flex items-center justify-center bg-black/65 p-3 backdrop-blur-sm sm:p-6" onPointerDown={(event) => { if (event.target === event.currentTarget) setPreviewAttachment(null) }}>
+        <section className="flex max-h-[92dvh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-background text-foreground shadow-2xl">
+          <header className="flex items-center gap-3 border-b border-border px-4 py-3"><FileTextIcon className="size-4 shrink-0" /><span className="min-w-0 flex-1 truncate text-sm font-medium">{previewAttachment.filename}</span><button type="button" onClick={() => setPreviewAttachment(null)} aria-label="Close preview" className="rounded-lg p-2 hover:bg-muted"><XIcon className="size-4" /></button></header>
+          <div className="min-h-0 flex-1 overflow-auto bg-muted/20 p-3 sm:p-5">
+            {previewAttachment.mediaType.startsWith("image/") ? <div className="flex min-h-64 items-center justify-center"><img src={previewAttachment.url} alt={previewAttachment.filename} className="max-h-[75dvh] max-w-full object-contain" /></div>
+              : previewAttachment.mediaType === "application/pdf" ? <iframe title={"PDF preview: " + previewAttachment.filename} src={previewAttachment.url} className="h-[75dvh] w-full rounded-lg bg-background" />
+              : previewAttachment.previewText ? <pre className="whitespace-pre-wrap break-words rounded-lg bg-background p-4 text-sm leading-6">{previewAttachment.previewText}</pre>
+              : <div className="space-y-3 p-4 text-sm text-muted-foreground"><p>Inline preview is not available for this file type.</p><a href={previewAttachment.url} target="_blank" rel="noreferrer" className="inline-flex rounded-lg border border-border px-3 py-2 text-foreground hover:bg-muted">Open or download file</a></div>}
+          </div>
+        </section>
+      </div>}
+      </>
     )
   }
 
