@@ -38,16 +38,6 @@ function getRecordingMimeType() {
   return preferredTypes.find((type) => MediaRecorder.isTypeSupported(type)) ?? ""
 }
 
-function getAudioExtension(type: string) {
-  const mimeType = type.split(";")[0].toLowerCase()
-  if (mimeType === "audio/mp4") return "mp4"
-  if (mimeType === "audio/ogg") return "ogg"
-  if (mimeType === "audio/wav" || mimeType === "audio/x-wav") return "wav"
-  if (mimeType === "audio/mpeg" || mimeType === "audio/mpga") return "mp3"
-  if (mimeType === "audio/flac") return "flac"
-  return "webm"
-}
-
 function WaveformRing({ level }: { level: number }) {
   return (
     <span className="relative inline-flex size-8 items-center justify-center" aria-hidden="true">
