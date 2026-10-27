@@ -23,6 +23,9 @@ test("file bytes bypass Vercel Functions through authenticated signed private-st
   assert.match(client, /uploadToSignedUrl/)
   assert.match(client, /\/complete/)
   assert.match(client, /method: "DELETE"/)
+  const processRoute = await read("app/api/files/[fileId]/process/route.ts")
+  assert.match(processRoute, /file_upload_not_complete/)
+  assert.match(processRoute, /file_signature_mismatch/)
 })
 
 test("file access creates short-lived signed URLs only after owner-scoped metadata lookup", async () => {
