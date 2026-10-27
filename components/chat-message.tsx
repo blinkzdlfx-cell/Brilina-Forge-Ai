@@ -19,7 +19,7 @@ import { Bubble, BubbleContent } from "@/components/ui/bubble"
 import { Message, MessageContent } from "@/components/ui/message"
 import { Trace } from "@/components/ui/trace"
 
-const PRIVATE_ATTACHMENT_CONTEXT_PREFIX = "[[FORGE_PRIVATE_ATTACHMENT_CONTEXT]]\\n"
+const PRIVATE_ATTACHMENT_CONTEXT_PREFIX = "[[FORGE_PRIVATE_ATTACHMENT_CONTEXT]]\n"
 
 type StepPart = Extract<
   ChatMessagePart,
