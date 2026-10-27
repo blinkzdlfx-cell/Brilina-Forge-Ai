@@ -28,7 +28,7 @@ function StyledModal({ title, children, onClose }: { title: string; children: Re
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
   }, [onClose])
-  return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+  return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
     <section role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-md rounded-2xl border border-border bg-popover p-5 text-popover-foreground shadow-2xl">
       <div className="mb-4 flex items-center justify-between"><h2 className="text-base font-semibold">{title}</h2><button type="button" aria-label="Close" onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"><XIcon className="size-4" /></button></div>
       {children}
@@ -50,12 +50,31 @@ export function ChatSidebar(props: ChatSidebarProps) {
   const [avatarError, setAvatarError] = React.useState("")
   const [profileEmail, setProfileEmail] = React.useState("")
   const avatarInput = React.useRef<HTMLInputElement>(null)
+  const sidebarRootRef = React.useRef<HTMLDivElement>(null)
   const visible = props.conversations.filter((c) => props.showArchived ? Boolean(c.archived_at) : !c.archived_at)
   const pinned = visible.filter((c) => c.is_pinned && !c.archived_at)
   const regular = visible.filter((c) => !c.is_pinned || Boolean(c.archived_at))
   const sorted = [...visible].sort((a,b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
   const searchResults = sorted.filter((item) => item.title.toLowerCase().includes(search.toLowerCase()))
   const closeModal = React.useCallback(() => { setModal(null); setSelected(null); setAvatarError("") }, [])
+  React.useEffect(() => {
+    if (!menuFor && !recentMenuOpen) return
+    const onPointerDown = (event: PointerEvent) => {
+      if (!(event.target instanceof Node) || !sidebarRootRef.current?.contains(event.target)) {
+        setMenuFor(null)
+        setRecentMenuOpen(false)
+      }
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { setMenuFor(null); setRecentMenuOpen(false) }
+    }
+    document.addEventListener("pointerdown", onPointerDown, true)
+    document.addEventListener("keydown", onKeyDown)
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true)
+      document.removeEventListener("keydown", onKeyDown)
+    }
+  }, [menuFor, recentMenuOpen])
   React.useEffect(() => { void fetch("/api/profile/avatar").then(async (response) => { if (!response.ok) return; const result = await response.json() as { url?: string; email?: string }; setAvatarUrl(result.url ?? ""); setProfileEmail(result.email ?? "") }).catch(() => undefined) }, [])
   const selectConversation = (id: string) => { props.onSelectConversation(id); closeModal(); if (isMobile) setOpenMobile(false) }
   const startRename = (item: SidebarConversation) => { setSelected(item); setRenameValue(item.title); setMenuFor(null); setModal("rename") }
@@ -98,6 +117,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
   )
 
   return <>
+    <div ref={sidebarRootRef} className="contents">
     <Sidebar collapsible="icon" aria-label="Conversation sidebar">
       <SidebarHeader className="p-3">
         <div className="flex h-9 items-center gap-2 group-data-[collapsible=icon]:justify-center">
@@ -131,6 +151,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
+    </div>
 
     {(modal === "recent" || modal === "pinned" || modal === "search") && <StyledModal title={modal === "recent" ? "Recent conversations" : modal === "pinned" ? "Pinned conversations" : "Search conversations"} onClose={closeModal}>
       {modal === "search" && <label className="mb-3 flex items-center gap-2 rounded-xl border border-border px-3"><SearchIcon className="size-4 text-muted-foreground" /><input autoFocus value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search chats…" className="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none" /></label>}
