@@ -67,6 +67,8 @@ Acceptance:
 ### Batch 2 — Conversation reliability, persistence, and private upload flows
 
 Scope:
+- Upload implementation underway on `feat/conversation-storage-batch-2`: authenticated signed-upload URL endpoints now send image/document bytes directly to private Supabase Storage; completion verifies the current user's storage path, declared size, and supported file signatures before creating metadata.
+- Audio recording is being moved to a dedicated private 20 MiB Supabase Storage bucket. The browser uploads the completed recording directly and submits only its owner/session-scoped storage reference to the transcription route; the existing ten-minute session cap and retry reservation remain enforced.
 - Audit the merged conversation APIs, message persistence, pin/archive/rename/delete lifecycle, idempotency, sequence allocation, and interrupted/failed assistant states.
 - Verify save/retry behavior cannot duplicate user turns or assistant messages, and that a refresh/reopen restores the correct conversation and context.
 - Fix the Vercel request-size conflict for file and audio uploads. Prefer authenticated direct-to-private-Supabase-Storage upload with server-verified ownership and metadata, then send compact file references to application routes. Never put base64 file data in chat messages.
