@@ -37,8 +37,10 @@ test("Vercel compatibility tests do not weaken existing authenticated file and t
   const files = await read("app/api/files/route.ts")
   const transcription = await read("app/api/transcribe/route.ts")
 
-  assert.match(files, /requireUser/)
-  assert.match(files, /hasExpectedSignature/)
+  assert.match(files, /direct_upload_required/)
+  const uploadIntent = await read("app/api/files/upload-intent/route.ts")
+  assert.match(uploadIntent, /requireUser/)
+  assert.match(uploadIntent, /createSignedUploadUrl/)
   assert.match(transcription, /requireUser/)
   assert.match(transcription, /MAX_RECORDING_MS\s*=\s*10\s*\*\s*60\s*\*\s*1000/)
 })
