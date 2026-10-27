@@ -42,7 +42,7 @@ test("audio transcription accepts a private file reference instead of binary req
   assert.match(route, /forge-private-audio/)
   assert.match(route, /request\.json\(\)/)
   assert.match(route, /\.eq\("user_id", context\.user\.id\)/)
-  assert.match(route, /storage\.from\("forge-private-audio"\)\.download/)
+  assert.match(route, /storage\.from\("forge-private-audio"\)\s*\.download/)
   assert.doesNotMatch(route, /request\.arrayBuffer\(\)/)
   assert.match(prompt, /uploadPrivateFile\(audioFile, null, "audio"\)/)
   assert.match(prompt, /JSON\.stringify\(\{ fileId: audioFileId \}\)/)
