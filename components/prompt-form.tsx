@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { ArrowUpIcon, ImagePlusIcon, MicIcon, SquareIcon, XIcon, RotateCcwIcon } from "lucide-react"
+import { ArrowUpIcon, FileTextIcon, ImageIcon, MicIcon, PlusIcon, SquareIcon, XIcon, RotateCcwIcon } from "lucide-react"
 import { uploadPrivateFile } from "@/lib/direct-upload"
 
 import {
@@ -86,6 +86,8 @@ export function PromptForm({
   const [selectedImages, setSelectedImages] = React.useState<File[]>([])
   const [imageError, setImageError] = React.useState("")
   const imageInputRef = React.useRef<HTMLInputElement>(null)
+  const documentInputRef = React.useRef<HTMLInputElement>(null)
+  const [attachmentMenuOpen, setAttachmentMenuOpen] = React.useState(false)
   const [hasAudio, setHasAudio] = React.useState(false)
   const inputRef = React.useRef("")
   const [voiceState, setVoiceState] = React.useState<VoiceState>("idle")
@@ -587,29 +589,19 @@ export function PromptForm({
             </span>
           )}
           <div className="flex w-full min-w-0 items-center gap-1.5">
-            {true && (
-              <>
-                <input
-                  ref={imageInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp,.txt,.md,.csv,.json,.html,.htm,.pdf,.docx,text/plain,text/markdown,text/csv,application/json,text/html,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  multiple
-                  className="hidden"
-                  onChange={handleImageSelection}
-                />
-                <InputGroupButton
-                  type="button"
-                  size="icon-sm"
-                  variant="outline"
-                  aria-label="Attach files"
-                  title="Attach images or documents (PNG, JPEG, WebP, TXT, MD, PDF, DOCX)"
-                  disabled={isBusy}
-                  onClick={() => imageInputRef.current?.click()}
-                >
-                  <ImagePlusIcon />
+            <>
+              <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/webp" multiple className="hidden" onChange={handleImageSelection} />
+              <input ref={documentInputRef} type="file" accept=".txt,.md,.csv,.json,.html,.htm,.pdf,.docx,text/plain,text/markdown,text/csv,application/json,text/html,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple className="hidden" onChange={handleImageSelection} />
+              <div className="relative">
+                <InputGroupButton type="button" size="icon-sm" variant="outline" aria-label="Add attachment" title="Add attachment" disabled={isBusy} aria-haspopup="menu" aria-expanded={attachmentMenuOpen} onClick={() => setAttachmentMenuOpen((open) => !open)}>
+                  <PlusIcon />
                 </InputGroupButton>
-              </>
-            )}
+                {attachmentMenuOpen && <div role="menu" aria-label="Add attachment" className="absolute bottom-full left-0 z-50 mb-2 min-w-44 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl">
+                  <button type="button" role="menuitem" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-muted" onClick={() => { setAttachmentMenuOpen(false); imageInputRef.current?.click() }}><ImageIcon className="size-4" />Add images</button>
+                  <button type="button" role="menuitem" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-muted" onClick={() => { setAttachmentMenuOpen(false); documentInputRef.current?.click() }}><FileTextIcon className="size-4" />Add documents</button>
+                </div>}
+              </div>
+            </>
             {isVoiceActive ? (
               <>
                 {isRecording ? <WaveformRing level={waveformLevel} /> : null}

@@ -6,6 +6,8 @@ import { useChat } from "@ai-sdk/react"
 import { lastAssistantMessageIsCompleteWithToolCalls } from "ai"
 
 import { type GatewayModel } from "@/lib/models"
+import { CogIcon, RotateCcwIcon, XIcon } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
 import { uploadPrivateFile } from "@/lib/direct-upload"
 import { type ChatUIMessage } from "@/tools"
 import { ChatMessage } from "@/components/chat-message"
@@ -35,7 +37,7 @@ import {
 } from "@/components/ui/message-scroller"
 import { Trace, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace"
 
-export function Chat({ models }: { models: GatewayModel[] }) {
+export function Chat({ models, initialConversationId = null }: { models: GatewayModel[]; initialConversationId?: string | null }) {
   React.useEffect(() => {
     const viewport = window.visualViewport
 
@@ -66,6 +68,9 @@ export function Chat({ models }: { models: GatewayModel[] }) {
 
   const [model, setModel] = React.useState(models[0]?.id ?? "")
   const [conversationId, setConversationId] = React.useState<string | null>(null)
+  const [conversationsLoading, setConversationsLoading] = React.useState(true)
+  const [conversationLoading, setConversationLoading] = React.useState(Boolean(initialConversationId))
+  const [pendingAttachmentMessage, setPendingAttachmentMessage] = React.useState<{ text: string; files: File[]; stage: string } | null>(null)
   const [conversations, setConversations] = React.useState<Array<{ id: string; title: string; is_pinned: boolean; archived_at: string | null; updated_at: string }>>([])
   const [showArchived, setShowArchived] = React.useState(false)
   const [conversationNotice, setConversationNotice] = React.useState("")
@@ -97,7 +102,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
       const active = await activeResponse.json() as { conversations?: typeof conversations }
       const archived = archivedResponse.ok ? await archivedResponse.json() as { conversations?: typeof conversations } : { conversations: [] }
       if (!cancelled) setConversations([...(active.conversations ?? []), ...(archived.conversations ?? [])])
-    }).catch(() => undefined)
+    }).catch(() => undefined).finally(() => { if (!cancelled) setConversationsLoading(false) })
     return () => { cancelled = true }
   }, [])
   const refreshConversations = React.useCallback(async () => {
@@ -106,6 +111,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
     const active = await a.json() as { conversations?: typeof conversations }
     const archived = b.ok ? await b.json() as { conversations?: typeof conversations } : { conversations: [] }
     setConversations([...(active.conversations ?? []), ...(archived.conversations ?? [])])
+    setConversationsLoading(false)
   }, [])
   const resolvedModel = models.some((m) => m.id === model)
     ? model
@@ -156,6 +162,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
       }
 
       setAttachmentError("")
+      if (files.length > 0) setPendingAttachmentMessage({ text: text || "Please analyze the attached files.", files, stage: "Preparing attachments…" })
       let targetId = conversationIdRef.current
       try {
         if (!targetId) {
@@ -165,22 +172,28 @@ export function Chat({ models }: { models: GatewayModel[] }) {
           targetId = payload.conversation.id
           conversationIdRef.current = targetId
           setConversationId(targetId)
+          window.history.replaceState(null, "", "/c/" + encodeURIComponent(targetId))
           await refreshConversations()
         }
-      } catch (cause) { setAttachmentError(cause instanceof Error ? cause.message : "Could not create a conversation."); return }
+      } catch (cause) { setAttachmentError(cause instanceof Error ? cause.message : "Could not create a conversation."); setPendingAttachmentMessage(null); return }
       // Keep the user's Writing model selected. Vision models are chosen internally
       // for image requests and are not exposed in the model selector.
 
       if (files.length > 0) {
         const attachmentText: string[] = []
+        const uploadedAttachments: Array<{ id: string; name: string; mimeType: string }> = []
         for (const file of files) {
+          setPendingAttachmentMessage({ text: text || "Please analyze the attached files.", files, stage: "Uploading " + file.name + "…" })
           let uploadedFile: { id: string; original_name: string }
           try {
             uploadedFile = await uploadPrivateFile(file, targetId, "file")
           } catch (cause) {
             setAttachmentError("Could not securely upload " + file.name + ". " + (cause instanceof Error ? cause.message : "Try again."))
+            setPendingAttachmentMessage({ text: text || "Please analyze the attached files.", files, stage: "Upload failed" })
             return
           }
+          uploadedAttachments.push({ id: uploadedFile.id, name: uploadedFile.original_name, mimeType: file.type || "application/octet-stream" })
+          setPendingAttachmentMessage({ text: text || "Please analyze the attached files.", files, stage: "Processing " + file.name + "…" })
           const image = file.type.startsWith("image/")
           let processPayload: { text?: string; error?: string }
           try {
@@ -192,16 +205,25 @@ export function Chat({ models }: { models: GatewayModel[] }) {
             if (!processed.ok || typeof processPayload.text !== "string") {
               await fetch("/api/files/" + encodeURIComponent(uploadedFile.id), { method: "DELETE" }).catch(() => undefined)
               setAttachmentError("Could not process " + file.name + ". " + (processPayload.error ?? "Try a supported file or try again."))
+              setPendingAttachmentMessage({ text: text || "Please analyze the attached files.", files, stage: "Processing failed" })
               return
             }
           } catch {
             await fetch("/api/files/" + encodeURIComponent(uploadedFile.id), { method: "DELETE" }).catch(() => undefined)
             setAttachmentError("The connection was interrupted while processing " + file.name + ". Upload it again and retry.")
+            setPendingAttachmentMessage({ text: text || "Please analyze the attached files.", files, stage: "Processing failed" })
             return
           }
-          attachmentText.push("\n\n[Attachment: " + uploadedFile.original_name + "]\n" + processPayload.text.slice(0, 9000))
+          attachmentText.push("\n\n[Attachment: " + uploadedFile.original_name + "]\n" + processPayload.text.slice(0, Math.max(0, 10500 - text.length - attachmentText.join("").length)))
         }
-        void sendMessage({ text: (text || "Please analyze the attached files.") + attachmentText.join("") }, { body: { model: resolvedModel } })
+        setPendingAttachmentMessage({ text: text || "Please analyze the attached files.", files, stage: "Sending…" })
+        const visibleParts = [
+          { type: "text" as const, text: text || "Please analyze the attached files." },
+          ...(attachmentText.length ? [{ type: "text" as const, text: "[[FORGE_PRIVATE_ATTACHMENT_CONTEXT]]\n" + attachmentText.join("") }] : []),
+          ...uploadedAttachments.map((file) => ({ type: "file" as const, url: "/api/files/" + encodeURIComponent(file.id) + "/view", mediaType: file.mimeType, filename: file.name })),
+        ]
+        void sendMessage({ parts: visibleParts } as ChatUIMessage, { body: { model: resolvedModel } })
+        setPendingAttachmentMessage(null)
       } else {
         void sendMessage({ text }, { body: { model: resolvedModel } })
       }
@@ -246,22 +268,41 @@ export function Chat({ models }: { models: GatewayModel[] }) {
     if (isBusy) stop()
     conversationIdRef.current = null
     setConversationId(null)
+    window.history.replaceState(null, "", "/")
+    setPendingAttachmentMessage(null)
     setMessages([])
     setConversationNotice("")
     setAttachmentError("")
   }, [isBusy, setMessages, stop])
   const openConversation = React.useCallback(async (id: string) => {
     if (isBusy) stop()
+    setConversationLoading(true)
     try {
       const response = await fetch("/api/conversations/" + encodeURIComponent(id))
       const payload = await response.json() as { messages?: ChatMessageType[] }
       if (!response.ok || !payload.messages) throw new Error("Could not load this conversation.")
       conversationIdRef.current = id
       setConversationId(id)
+      window.history.replaceState(null, "", "/c/" + encodeURIComponent(id))
       setMessages(payload.messages)
       setConversationNotice("")
-    } catch (cause) { setConversationNotice(cause instanceof Error ? cause.message : "Could not load this conversation.") }
+      setConversationLoading(false)
+    } catch (cause) { setConversationNotice(cause instanceof Error ? cause.message : "Could not load this conversation."); setConversationLoading(false) }
   }, [isBusy, setMessages, stop])
+  React.useEffect(() => {
+    if (!initialConversationId) return
+    let cancelled = false
+    fetch("/api/conversations/" + encodeURIComponent(initialConversationId)).then(async (response) => {
+      const payload = await response.json() as { messages?: ChatMessageType[] }
+      if (!response.ok || !payload.messages) throw new Error("Could not load this conversation.")
+      if (cancelled) return
+      conversationIdRef.current = initialConversationId
+      setConversationId(initialConversationId)
+      setMessages(payload.messages)
+      setConversationLoading(false)
+    }).catch((cause) => { if (!cancelled) { setConversationNotice(cause instanceof Error ? cause.message : "Could not load this conversation."); setConversationLoading(false) } })
+    return () => { cancelled = true }
+  }, [initialConversationId, setMessages])
   React.useEffect(() => {
     if (status !== "ready" || !conversationId || messages.length === 0) return
     const controller = new AbortController()
@@ -282,7 +323,6 @@ export function Chat({ models }: { models: GatewayModel[] }) {
     await refreshConversations()
   }, [refreshConversations])
   const deleteConversation = React.useCallback(async (id: string) => {
-    if (!window.confirm("Delete this conversation and its messages? This cannot be undone.")) return
     const response = await fetch("/api/conversations/" + encodeURIComponent(id), { method: "DELETE" })
     if (!response.ok) { setConversationNotice("Could not delete this conversation."); return }
     if (conversationIdRef.current === id) startNewChat()
@@ -293,6 +333,8 @@ export function Chat({ models }: { models: GatewayModel[] }) {
     <SidebarProvider defaultOpen className="h-full !min-h-0 w-full flex-1 overflow-hidden overscroll-none">
       <ChatSidebar
         hasConversation={messages.length > 0}
+        isLoading={conversationsLoading}
+        onNewChat={startNewChat}
         conversationTitle={conversationTitle}
         conversations={conversations}
         activeConversationId={conversationId}
@@ -301,7 +343,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
         onSelectConversation={(id) => void openConversation(id)}
         onPinConversation={(item) => void updateConversation(item.id, { is_pinned: !item.is_pinned }).catch((e) => setConversationNotice(e.message))}
         onArchiveConversation={(item) => void updateConversation(item.id, { archived: !item.archived_at }).then(() => { if (!item.archived_at && conversationIdRef.current === item.id) startNewChat() }).catch((e) => setConversationNotice(e.message))}
-        onRenameConversation={(item) => { const title = window.prompt("Conversation name", item.title); if (title?.trim()) void updateConversation(item.id, { title }).catch((e) => setConversationNotice(e.message)) }}
+        onRenameConversation={(item) => { void updateConversation(item.id, { title: item.title }).catch((e) => setConversationNotice(e.message)) }}
         onDeleteConversation={(item) => void deleteConversation(item.id)}
       />
 
@@ -313,12 +355,27 @@ export function Chat({ models }: { models: GatewayModel[] }) {
             title="Toggle sidebar"
           />
           <div className="pointer-events-auto ml-auto min-w-0 max-w-[calc(100vw-5.75rem)] sm:max-w-none">
-            <ChatHeaderControls models={models} model={resolvedModel} onModelChange={setModel} onNewChat={startNewChat} />
+            <ChatHeaderControls
+              models={models}
+              model={resolvedModel}
+              onModelChange={setModel}
+              onNewChat={startNewChat}
+              activeConversation={conversations.find((item) => item.id === conversationId) ?? null}
+              onRenameConversation={(title) => { if (conversationId) void updateConversation(conversationId, { title }).catch((cause) => setConversationNotice(cause.message)) }}
+              onPinConversation={() => { const item = conversations.find((entry) => entry.id === conversationId); if (item) void updateConversation(item.id, { is_pinned: !item.is_pinned }).catch((cause) => setConversationNotice(cause.message)) }}
+              onArchiveConversation={() => { const id = conversationId; if (id) void updateConversation(id, { archived: true }).then(startNewChat).catch((cause) => setConversationNotice(cause.message)) }}
+              onDeleteConversation={() => { if (conversationId) void deleteConversation(conversationId) }}
+            />
           </div>
         </div>
 
         <div className="mx-auto flex min-h-0 w-full flex-1 flex-col overflow-hidden">
-          {messages.length === 0 ? (
+          {conversationLoading ? (
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-6" role="status" aria-label="Loading conversation">
+              <CogIcon className="size-8 animate-spin text-muted-foreground" />
+              <div className="w-full max-w-sm space-y-3"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-full" /><Skeleton className="h-16 w-2/3 rounded-2xl" /></div>
+            </div>
+          ) : messages.length === 0 && !pendingAttachmentMessage ? (
             <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-6">
               <Empty>
                 <EmptyHeader>
@@ -338,6 +395,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
               <MessageScroller className="min-h-0 flex-1">
                 <MessageScrollerViewport>
                   <MessageScrollerContent className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-6 pb-6 pt-16">
+                    {pendingAttachmentMessage && <MessageScrollerItem messageId="pending-attachment"><Message align="end"><MessageContent><div className="flex w-full justify-end"><div className="max-w-[80%] rounded-3xl border border-border bg-muted px-3 py-2.5 text-sm"><div className="whitespace-pre-wrap">{pendingAttachmentMessage.text}</div><div className="mt-2 flex flex-wrap gap-2">{pendingAttachmentMessage.files.map((file, index) => <div key={file.name + file.size + index} className="flex items-center gap-2 rounded-lg border border-border/70 bg-background/60 px-2 py-1.5 text-xs"><span className="max-w-40 truncate">{file.name}</span></div>)}</div><div role="status" className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">{pendingAttachmentMessage.stage.toLowerCase().includes("failed") ? <XIcon className="size-3.5 text-destructive" /> : <span className="size-3 animate-spin rounded-full border-2 border-current border-t-transparent" />}{pendingAttachmentMessage.stage}{pendingAttachmentMessage.stage.toLowerCase().includes("failed") && <button type="button" onClick={() => { const pending = pendingAttachmentMessage; setPendingAttachmentMessage(null); setAttachmentError(""); void handleSendMessage(pending.text, pending.files) }} className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 hover:bg-background"><RotateCcwIcon className="size-3" />Retry</button>}</div></div></div></MessageContent></Message></MessageScrollerItem>}
                     {messages.map((message) => (
                       <MessageScrollerItem
                         key={message.id}
@@ -346,6 +404,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
                       >
                         <ChatMessage
                           message={message}
+                          onEdit={(editedText) => { setMessages((current) => current.slice(0, messages.findIndex((item) => item.id === message.id))); window.setTimeout(() => void handleSendMessage(editedText), 0) }}
                           collapseExpandedMessagesKey={collapseExpandedMessagesKey}
                           isStreaming={
                             isBusy && message.id === lastMessage?.id
