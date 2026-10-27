@@ -162,6 +162,13 @@ export function PromptForm({
   }, [attachmentMenuOpen])
 
   React.useEffect(() => {
+    if (!previewFile) return
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") setPreviewFile(null) }
+    document.addEventListener("keydown", onKeyDown)
+    return () => document.removeEventListener("keydown", onKeyDown)
+  }, [previewFile])
+
+  React.useEffect(() => {
     if (!previewFile) { setPreviewUrl(""); setPreviewText(""); setPreviewError(""); setPreviewLoading(false); return }
     const url = URL.createObjectURL(previewFile)
     let active = true
@@ -610,7 +617,7 @@ export function PromptForm({
       return
     }
     const text = inputRef.current.trim()
-    if ((!text && selectedImages.length === 0) || isBusy || voiceState === "transcribing" || voiceState === "stopped") return
+    if ((!text && selectedImages.length === 0) || isBusy || isPreparingAttachments || isSubmitting || voiceState === "transcribing" || voiceState === "stopped") return
     setIsSubmitting(true)
     try {
       const succeeded = await onSubmit(text, selectedImages)
@@ -696,7 +703,7 @@ export function PromptForm({
               <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/webp" multiple className="hidden" onChange={handleImageSelection} />
               <input ref={documentInputRef} type="file" accept=".txt,.md,.csv,.json,.html,.htm,.pdf,.docx,text/plain,text/markdown,text/csv,application/json,text/html,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple className="hidden" onChange={handleImageSelection} />
               <div ref={attachmentMenuRef} className="relative">
-                <InputGroupButton type="button" size="icon-sm" variant="outline" aria-label="Add attachment" title="Add attachment" disabled={isBusy} aria-haspopup="menu" aria-expanded={attachmentMenuOpen} onClick={() => setAttachmentMenuOpen((open) => !open)}>
+                <InputGroupButton type="button" size="icon-sm" variant="outline" aria-label="Add attachment" title="Add attachment" disabled={isBusy || isPreparingAttachments || isSubmitting} aria-haspopup="menu" aria-expanded={attachmentMenuOpen} onClick={() => setAttachmentMenuOpen((open) => !open)}>
                   <PlusIcon />
                 </InputGroupButton>
                 {attachmentMenuOpen && <div role="menu" aria-label="Add attachment" className="absolute bottom-full left-0 z-50 mb-2 min-w-44 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl">
