@@ -50,7 +50,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
   const [avatarError, setAvatarError] = React.useState("")
   const [profileEmail, setProfileEmail] = React.useState("")
   const avatarInput = React.useRef<HTMLInputElement>(null)
-remove root ref  const visible = props.conversations.filter((c) => props.showArchived ? Boolean(c.archived_at) : !c.archived_at)
+  const visible = props.conversations.filter((c) => props.showArchived ? Boolean(c.archived_at) : !c.archived_at)
   const pinned = visible.filter((c) => c.is_pinned && !c.archived_at)
   const regular = visible.filter((c) => !c.is_pinned || Boolean(c.archived_at))
   const sorted = [...visible].sort((a,b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
