@@ -169,13 +169,42 @@ export function Chat({ models }: { models: GatewayModel[] }) {
       if (files.length > 0) {
         const attachmentText: string[] = []
         for (const file of files) {
-          const form = new FormData()
-          form.set("file", file)
-          if (targetId) form.set("conversationId", targetId)
-          const uploaded = await fetch("/api/files", { method: "POST", body: form })
-          const uploadPayload = await uploaded.json() as { file?: { id: string; original_name: string }; error?: string }
-          if (!uploaded.ok || !uploadPayload.file?.id) {
-            setAttachmentError("Could not securely upload " + file.name + ". " + (uploadPayload.error ?? "Try again."))
+          const initialized = await fetch("/api/files/upload-url", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: file.name, mimeType: file.type, size: file.size, conversationId: targetId }),
+          })
+          const initPayload = await initialized.json() as {
+            upload?: { signedUrl: string; storagePath: string }
+            error?: string
+          }
+          if (!initialized.ok || !initPayload.upload?.signedUrl || !initPayload.upload.storagePath) {
+            setAttachmentError("Could not initialize secure upload for " + file.name + ". " + (initPayload.error ?? "Try again."))
+            return
+          }
+          const transfer = await fetch(initPayload.upload.signedUrl, {
+            method: "PUT",
+            headers: { "Content-Type": file.type, "x-upsert": "false" },
+            body: file,
+          })
+          if (!transfer.ok) {
+            setAttachmentError("Could not transfer " + file.name + " to private storage. Try again.")
+            return
+          }
+          const completed = await fetch("/api/files/complete-upload", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              storagePath: initPayload.upload.storagePath,
+              name: file.name,
+              mimeType: file.type,
+              size: file.size,
+              conversationId: targetId,
+            }),
+          })
+          const uploadPayload = await completed.json() as { file?: { id: string; original_name: string }; error?: string }
+          if (!completed.ok || !uploadPayload.file?.id) {
+            setAttachmentError("Could not verify secure upload for " + file.name + ". " + (uploadPayload.error ?? "Try again."))
             return
           }
           const image = file.type.startsWith("image/")
