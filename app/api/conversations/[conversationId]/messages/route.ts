@@ -115,6 +115,10 @@ export async function POST(request: Request, context: RouteContext) {
         continue
       }
 
+      if (insertError.code !== "23505") {
+        return Response.json({ error: "message_save_failed" }, { status: 500 })
+      }
+
       // A concurrent request may have inserted this same client ID, or claimed
       // the sequence number first. Distinguish those cases before retrying.
       const { data: duplicate } = await auth.supabase.from("messages")
