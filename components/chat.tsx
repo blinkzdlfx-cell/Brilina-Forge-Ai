@@ -189,6 +189,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
             uploadedFile = await uploadPrivateFile(file, targetId, "file")
           } catch (cause) {
             setAttachmentError("Could not securely upload " + file.name + ". " + (cause instanceof Error ? cause.message : "Try again."))
+            setPendingAttachmentMessage({ text: text || "Please analyze the attached files.", files, stage: "Upload failed" })
             return
           }
           uploadedAttachments.push({ id: uploadedFile.id, name: uploadedFile.original_name, mimeType: file.type || "application/octet-stream" })
@@ -213,7 +214,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
             setPendingAttachmentMessage({ text: text || "Please analyze the attached files.", files, stage: "Processing failed" })
             return
           }
-          attachmentText.push("\n\n[Attachment: " + uploadedFile.original_name + "]\n" + processPayload.text.slice(0, 9000))
+          attachmentText.push("\n\n[Attachment: " + uploadedFile.original_name + "]\n" + processPayload.text.slice(0, Math.max(0, 10500 - text.length - attachmentText.join("").length)))
         }
         setPendingAttachmentMessage({ text: text || "Please analyze the attached files.", files, stage: "Sending…" })
         const visibleParts = [
