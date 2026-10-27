@@ -173,12 +173,9 @@ export function PromptForm({
     const url = URL.createObjectURL(previewFile)
     let active = true
     let temporaryFileId: string | null = null
-    setPreviewUrl(url)
-    setPreviewText("")
-    setPreviewError("")
+    const frame = requestAnimationFrame(() => { if (active) setPreviewUrl(url) })
     const isImage = previewFile.type.startsWith("image/")
     const isPdf = previewFile.type === "application/pdf"
-    setPreviewLoading(!isImage && !isPdf)
     if (!isImage && !isPdf) {
       const loadText = async () => {
         if (previewFile.type !== "application/vnd.openxmlformats-officedocument.wordprocessingml.document") return previewFile.text()
@@ -210,6 +207,7 @@ export function PromptForm({
     }
     return () => {
       active = false
+      cancelAnimationFrame(frame)
       URL.revokeObjectURL(url)
       if (temporaryFileId) void fetch("/api/files/" + encodeURIComponent(temporaryFileId), { method: "DELETE" }).catch(() => undefined)
     }
@@ -674,7 +672,7 @@ export function PromptForm({
             const preview = imagePreviews.find((item) => item.file === file)
             return (
             <div key={file.name + file.size + index} className={preview ? "relative size-16 overflow-hidden rounded-lg border border-border bg-muted" : "relative flex max-w-56 items-center gap-2 rounded-lg border border-border bg-muted px-2 py-1 text-xs"}>
-              <button type="button" onClick={() => setPreviewFile(file)} aria-label={"Preview " + file.name} title={"Preview " + file.name} className={preview ? "size-full" : "flex min-w-0 items-center gap-2 pr-4 text-left"}>
+              <button type="button" onClick={() => { setPreviewUrl(""); setPreviewText(""); setPreviewError(""); setPreviewLoading(!file.type.startsWith("image/") && file.type !== "application/pdf"); setPreviewFile(file) }} aria-label={"Preview " + file.name} title={"Preview " + file.name} className={preview ? "size-full" : "flex min-w-0 items-center gap-2 pr-4 text-left"}>
                 {preview ? <>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={preview.url} alt={file.name} className="size-full object-cover" />
