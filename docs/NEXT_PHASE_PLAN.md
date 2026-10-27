@@ -5,7 +5,7 @@
 **Custom domain target:** `https://forge.brilinadev.name.ng`  
 **Retained fallback:** Cloudflare Worker `brilina-forge-ai` — `https://brilina-forge-ai.blinkzdlfx.workers.dev`  
 **Supabase project:** `jjocynbtuafdokkjemym`  
-**Plan status:** Execution roadmap; no production deployment, DNS changes, secret changes, or live database migrations are authorized by this document.
+**Plan status:** Execution roadmap; no production deployment, DNS changes, secret changes, or live database migrations are authorized by this document unless separately approved in the conversation. The Batch 2 audio-storage migration was explicitly approved and applied on 2026-10-27.
 
 This document is the controlling execution plan. `docs/IMPLEMENTATION_SPEC.md` remains the product requirements catalogue. `docs/VERCEL-FIRST-DEPLOYMENT-PLAN.md` provides the Vercel-specific deployment notes; its earlier seven-step compatibility outline is superseded by the four substantial batches below. The AI pipeline requirements remain authoritative for streaming, bounds, provenance, cancellation, retries, and redacted diagnostics.
 
@@ -82,7 +82,8 @@ Acceptance:
 
 Implementation evidence on the Batch 2 branch (not yet live-verified):
 - Signed upload intents and a completion check send binary bytes directly from the browser to Supabase Storage; chat and transcription routes use compact file IDs.
-- Repository migration `0007_private_audio_storage.sql` defines a private 20 MiB audio bucket and has not been applied to production.
+- Repository migration `0007_private_audio_storage.sql` defines a private 20 MiB audio bucket. It was applied to Supabase project `jjocynbtuafdokkjemym` on 2026-10-27; read-only checks confirmed the bucket is private, the 20 MiB limit and MIME allowlist are set, and four owner-folder policies exist.
+- PR #33 was merged as `ab35de3ed9b5db62866b7f4d780c92d7e8104df7`. GitHub Actions passed unit/contract tests, lint, typecheck, native Next.js build, Worker build, and Cloud Run container build. Vercel preview was Ready; authenticated live acceptance checks remain pending.
 - Processing validates supported file signatures and checks ownership; file deletion handles both private buckets.
 - Message persistence retries sequence conflicts and updates an existing assistant row when its stable ID changes state.
 - CI and authorized preview verification are pending.
