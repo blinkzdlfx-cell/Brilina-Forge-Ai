@@ -36,7 +36,7 @@ function StyledModal({ title, children, onClose }: { title: string; children: Re
 
 export function ChatSidebar(props: ChatSidebarProps) {
   const router = useRouter()
-  const { state, isMobile, setOpenMobile } = useSidebar()
+  const { isMobile, setOpenMobile } = useSidebar()
   const [menuFor, setMenuFor] = React.useState<string | null>(null)
   const [recentMenuOpen, setRecentMenuOpen] = React.useState(false)
   const [modal, setModal] = React.useState<"recent" | "pinned" | "search" | "settings" | "rename" | "delete" | null>(null)
