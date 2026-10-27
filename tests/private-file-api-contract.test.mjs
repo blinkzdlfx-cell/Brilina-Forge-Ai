@@ -18,7 +18,7 @@ test("file bytes bypass Vercel Functions through authenticated signed private-st
   assert.match(intent, /MAX_AUDIO_BYTES/)
   assert.match(intent, /\.eq\("user_id", auth\.user\.id\)/)
   assert.match(complete, /forge-private-audio/)
-  assert.match(complete, /metadata\.size/)
+  assert.match(complete, /metadata[\\s\\S]*?\\.size/)
   assert.match(complete, /\.eq\("user_id", auth\.user\.id\)/)
   assert.match(client, /uploadToSignedUrl/)
   assert.match(client, /\/complete/)
