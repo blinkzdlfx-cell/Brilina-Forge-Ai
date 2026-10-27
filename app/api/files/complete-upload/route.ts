@@ -82,6 +82,10 @@ export async function POST(request: Request) {
   }).select("id, original_name, mime_type, size_bytes, status, created_at").single()
 
   if (metadataError || !file) {
+    const { data: racedFile } = await admin.from("files")
+      .select("id, original_name, mime_type, size_bytes, status, created_at")
+      .eq("user_id", auth.user.id).eq("bucket_id", BUCKET).eq("storage_path", storagePath).maybeSingle()
+    if (racedFile) return Response.json({ file: racedFile }, { status: 200, headers: { "Cache-Control": "no-store" } })
     await admin.storage.from(BUCKET).remove([storagePath])
     return Response.json({ error: "file_metadata_save_failed" }, { status: 500 })
   }
