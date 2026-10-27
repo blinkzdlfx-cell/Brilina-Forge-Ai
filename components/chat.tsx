@@ -183,7 +183,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
             return
           }
           const transfer = await fetch(initPayload.upload.signedUrl, {
-            method: "PUT",
+            method: "POST",
             headers: { "Content-Type": file.type, "x-upsert": "false" },
             body: file,
           })
