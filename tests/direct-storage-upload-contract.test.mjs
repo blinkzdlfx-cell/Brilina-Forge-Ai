@@ -16,7 +16,7 @@ test("attachment bytes upload directly to private storage and metadata is verifi
   assert.match(init, /createSignedUploadUrl/)
   assert.match(init, /\.eq\("user_id", auth\.user\.id\)/)
   assert.match(complete, /requireUser/)
-  assert.match(complete, /storagePath\\.split\\("\/"\\)/)
+  assert.match(complete, /storagePath\.split\("\/"\)/)
   assert.match(complete, /hasExpectedSignature/)
   assert.match(complete, /\.eq\("user_id", auth\.user\.id\)/)
   assert.match(complete, /if \(existing\) return Response\.json\(\{ file: existing \}/)
