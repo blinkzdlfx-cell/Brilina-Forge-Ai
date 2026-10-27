@@ -4,15 +4,25 @@ import test from "node:test"
 
 const read = (path) => readFile(new URL("../" + path, import.meta.url), "utf8")
 
-test("file upload requires a user, caps payloads, validates types, and stores private object references", async () => {
-  const route = await read("app/api/files/route.ts")
-  assert.match(route, /requireUser/)
-  assert.match(route, /MAX_FILE_BYTES/)
-  assert.match(route, /ALLOWED_TYPES/)
-  assert.match(route, /hasExpectedSignature/)
-  assert.match(route, /forge-private-files/)
-  assert.match(route, /storage_path: storagePath/)
-  assert.match(route, /remove\(\[storagePath\]\)/)
+test("file bytes bypass Vercel Functions through authenticated signed private-storage uploads", async () => {
+  const legacyRoute = await read("app/api/files/route.ts")
+  const intent = await read("app/api/files/upload-intent/route.ts")
+  const complete = await read("app/api/files/[fileId]/complete/route.ts")
+  const client = await read("lib/direct-upload.ts")
+  assert.match(legacyRoute, /direct_upload_required/)
+  assert.match(legacyRoute, /status: 410/)
+  assert.match(intent, /requireUser/)
+  assert.match(intent, /createSignedUploadUrl/)
+  assert.match(intent, /forge-private-files/)
+  assert.match(intent, /MAX_FILE_BYTES/)
+  assert.match(intent, /MAX_AUDIO_BYTES/)
+  assert.match(intent, /\.eq\("user_id", auth\.user\.id\)/)
+  assert.match(complete, /forge-private-audio/)
+  assert.match(complete, /metadata\.size/)
+  assert.match(complete, /\.eq\("user_id", auth\.user\.id\)/)
+  assert.match(client, /uploadToSignedUrl/)
+  assert.match(client, /\/complete/)
+  assert.match(client, /method: "DELETE"/)
 })
 
 test("file access creates short-lived signed URLs only after owner-scoped metadata lookup", async () => {
@@ -20,5 +30,25 @@ test("file access creates short-lived signed URLs only after owner-scoped metada
   assert.match(route, /\.eq\("user_id", auth\.user\.id\)/)
   assert.match(route, /createSignedUrl\(file\.storage_path, 60\)/)
   assert.match(route, /export async function DELETE/)
-  assert.match(route, /storage\.from\(BUCKET\)\.remove/)
+  assert.match(route, /storage\.from\(file\.bucket_id\)\.remove/)
+})
+
+test("audio transcription accepts a private file reference instead of binary request bodies", async () => {
+  const route = await read("app/api/transcribe/route.ts")
+  const prompt = await read("components/prompt-form.tsx")
+  assert.match(route, /forge-private-audio/)
+  assert.match(route, /request\.json\(\)/)
+  assert.match(route, /\.eq\("user_id", context\.user\.id\)/)
+  assert.match(route, /storage\.from\("forge-private-audio"\)\.download/)
+  assert.doesNotMatch(route, /request\.arrayBuffer\(\)/)
+  assert.match(prompt, /uploadPrivateFile\(audioFile, null, "audio"\)/)
+  assert.match(prompt, /JSON\.stringify\(\{ fileId: audioFileId \}\)/)
+})
+
+test("private audio bucket is private and capped at 20 MiB", async () => {
+  const migration = await read("supabase/migrations/0007_private_audio_storage.sql")
+  assert.match(migration, /'forge-private-audio',[\s\S]*?false,[\s\S]*?20971520/i)
+  for (const operation of ["select", "insert", "update", "delete"]) {
+    assert.match(migration, new RegExp("forge_private_audio_" + operation + "_own"))
+  }
 })
