@@ -109,30 +109,45 @@ export async function POST(request: Request) {
     return jsonError("This recording is already being processed. Try again shortly.", 409)
   }
 
-  const contentLength = Number(request.headers.get("content-length") ?? 0)
-  if (contentLength > MAX_REQUEST_BYTES) {
-    return jsonError("Audio must be 20 MB or smaller. Record a shorter message.", 413)
-  }
-
-  const contentType = (request.headers.get("content-type") ?? "")
-    .split(";")[0]
-    .trim()
-    .toLowerCase()
-  if (!ALLOWED_AUDIO_TYPES.has(contentType)) {
-    return jsonError("This audio format is not supported. Try recording with a current browser.", 415)
-  }
-
   let audio: ArrayBuffer
-  try {
-    audio = await request.arrayBuffer()
-  } catch {
-    return jsonError("Invalid audio upload.", 400)
+  let contentType = ""
+  let audioStoragePath: string | null = null
+  const incomingType = (request.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase()
+
+  if (incomingType === "application/json") {
+    let body: unknown
+    try { body = await request.json() } catch { return jsonError("Invalid audio reference.", 400) }
+    const input = body && typeof body === "object" ? body as Record<string, unknown> : {}
+    const storagePath = typeof input.storagePath === "string" ? input.storagePath : ""
+    contentType = typeof input.mimeType === "string" ? input.mimeType.toLowerCase() : ""
+    const declaredSize = typeof input.size === "number" ? input.size : NaN
+    const pathParts = storagePath.split("/")
+    if (pathParts.length !== 3 || pathParts[0] !== context.user.id || pathParts[1] !== session.id || !UUID_PATTERN.test(pathParts[1]) || !/^[0-9a-f-]{36}\.(flac|mp4|mp3|mpga|ogg|wav|webm)$/i.test(pathParts[2])) {
+      return jsonError("Audio upload reference is invalid.", 400)
+    }
+    if (!ALLOWED_AUDIO_TYPES.has(contentType) || !Number.isSafeInteger(declaredSize) || declaredSize <= 0 || declaredSize > MAX_AUDIO_BYTES) {
+      return jsonError("Audio upload metadata is invalid.", 400)
+    }
+    const { data: object, error: downloadError } = await admin.storage.from("forge-private-audio").download(storagePath)
+    if (downloadError || !object) return jsonError("Uploaded audio could not be found. Upload it again.", 404)
+    if (object.size !== declaredSize || object.size > MAX_AUDIO_BYTES) {
+      await admin.storage.from("forge-private-audio").remove([storagePath])
+      return jsonError("Audio must be 20 MB or smaller. Record a shorter message.", 413)
+    }
+    audio = await object.arrayBuffer()
+    audioStoragePath = storagePath
+  } else {
+    const contentLength = Number(request.headers.get("content-length") ?? 0)
+    if (contentLength > MAX_REQUEST_BYTES) return jsonError("Audio must be 20 MB or smaller. Record a shorter message.", 413)
+    contentType = incomingType
+    if (!ALLOWED_AUDIO_TYPES.has(contentType)) {
+      return jsonError("This audio format is not supported. Try recording with a current browser.", 415)
+    }
+    try { audio = await request.arrayBuffer() } catch { return jsonError("Invalid audio upload.", 400) }
   }
 
   if (!audio.byteLength) return jsonError("The audio recording is empty.", 400)
-  if (audio.byteLength > MAX_AUDIO_BYTES) {
-    return jsonError("Audio must be 20 MB or smaller. Record a shorter message.", 413)
-  }
+  if (audio.byteLength > MAX_AUDIO_BYTES) return jsonError("Audio must be 20 MB or smaller. Record a shorter message.", 413)
 
   const accountId = getRuntimeEnv("CLOUDFLARE_ACCOUNT_ID")
   const apiToken = getRuntimeEnv("CLOUDFLARE_AI_API_TOKEN")
