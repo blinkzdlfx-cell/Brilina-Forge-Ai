@@ -1,8 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useRouter } from "next/navigation"
-import { ArchiveIcon, Ellipsis, KeyRound, LogOut, PinIcon, SquarePen, Trash2Icon, XIcon } from "lucide-react"
+import { ArchiveIcon, Ellipsis, PinIcon, SquarePen, Trash2Icon, XIcon } from "lucide-react"
 
 import { type GatewayModel } from "@/lib/models"
 import { ModelSelect } from "@/components/model-select"
@@ -31,19 +30,20 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
 }
 
 export function ChatHeaderControls({ onNewChat, models, model, onModelChange, activeConversation = null, onRenameConversation, onPinConversation, onArchiveConversation, onDeleteConversation }: ChatHeaderControlsProps) {
-  const router = useRouter()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [modal, setModal] = React.useState<"rename" | "delete" | null>(null)
   const [title, setTitle] = React.useState(activeConversation?.title ?? "")
   const menuRef = React.useRef<HTMLDivElement>(null)
+  const menuTriggerRef = React.useRef<HTMLButtonElement>(null)
+  const menuPopupRef = React.useRef<HTMLDivElement>(null)
 
   React.useEffect(() => {
     if (!menuOpen) return
-    const handlePointerDown = (event: PointerEvent) => { if (event.target instanceof Node && !menuRef.current?.contains(event.target)) setMenuOpen(false) }
+    const handlePointerDown = (event: PointerEvent) => { if (!(event.target instanceof Node) || (!menuTriggerRef.current?.contains(event.target) && !menuPopupRef.current?.contains(event.target))) setMenuOpen(false) }
     const handleKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") { setMenuOpen(false); setModal(null) } }
-    document.addEventListener("pointerdown", handlePointerDown)
+    document.addEventListener("pointerdown", handlePointerDown, true)
     document.addEventListener("keydown", handleKeyDown)
-    return () => { document.removeEventListener("pointerdown", handlePointerDown); document.removeEventListener("keydown", handleKeyDown) }
+    return () => { document.removeEventListener("pointerdown", handlePointerDown, true); document.removeEventListener("keydown", handleKeyDown) }
   }, [menuOpen])
 
   const menuItem = (label: string, icon: React.ReactNode, onClick: () => void, destructive = false) => <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onClick() }} className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-muted ${destructive ? "text-destructive hover:bg-destructive/10" : ""}`}>{icon}{label}</button>
@@ -53,8 +53,8 @@ export function ChatHeaderControls({ onNewChat, models, model, onModelChange, ac
       <span className="shrink-0 whitespace-nowrap px-1 text-[9px] font-semibold tracking-wide sm:px-2 sm:text-[10px]">BRILINAFORGE</span>
       <div className="w-0 min-w-0 flex-1 sm:w-36 sm:flex-none sm:max-w-44"><ModelSelect models={models} value={model} onValueChange={onModelChange} /></div>
       <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full hover:bg-muted dark:hover:bg-white/10 sm:size-9" onClick={onNewChat} aria-label="New chat" title="New chat"><SquarePen className="size-4" /></Button>
-      <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full hover:bg-muted dark:hover:bg-white/10 sm:size-9" onClick={() => setMenuOpen((open) => !open)} aria-label="More options" title="More options" aria-haspopup="menu" aria-expanded={menuOpen}><Ellipsis className="size-4" /></Button>
-      {menuOpen && <div role="menu" aria-label="More options" className="absolute right-0 top-full z-50 mt-2 min-w-48 rounded-2xl border border-border/70 bg-popover/95 p-2 shadow-xl backdrop-blur-xl">
+      <Button ref={menuTriggerRef} type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full hover:bg-muted dark:hover:bg-white/10 sm:size-9" onClick={() => setMenuOpen((open) => !open)} aria-label="More options" title="More options" aria-haspopup="menu" aria-expanded={menuOpen}><Ellipsis className="size-4" /></Button>
+      {menuOpen && <div ref={menuPopupRef} role="menu" aria-label="More options" className="absolute right-0 top-full z-50 mt-2 min-w-48 rounded-2xl border border-border/70 bg-popover/95 p-2 shadow-xl backdrop-blur-xl">
         {activeConversation && <>
           {menuItem("Rename", <SquarePen className="size-4" />, () => { setTitle(activeConversation.title); setModal("rename") })}
           {menuItem(activeConversation.is_pinned ? "Unpin" : "Pin", <PinIcon className="size-4" />, () => onPinConversation?.())}
@@ -62,8 +62,6 @@ export function ChatHeaderControls({ onNewChat, models, model, onModelChange, ac
           {menuItem("Delete", <Trash2Icon className="size-4" />, () => setModal("delete"), true)}
           <div className="my-1 border-t border-border" />
         </>}
-        {menuItem("Change password", <KeyRound className="size-4" />, () => router.push("/change-password"))}
-        {menuItem("Log out", <LogOut className="size-4" />, async () => { await fetch("/api/auth/sign-out", { method: "POST" }).catch(() => undefined); router.replace("/login"); router.refresh() })}
       </div>}
     </div>
     {modal === "rename" && activeConversation && <Modal title="Rename conversation" onClose={() => setModal(null)}><form onSubmit={(event) => { event.preventDefault(); if (!title.trim()) return; onRenameConversation?.(title.trim()); setModal(null) }} className="space-y-4"><input autoFocus maxLength={300} value={title} onChange={(event) => setTitle(event.target.value)} aria-label="Conversation name" className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" /><div className="flex justify-end gap-2"><button type="button" onClick={() => setModal(null)} className="rounded-xl px-4 py-2 text-sm hover:bg-muted">Cancel</button><button type="submit" disabled={!title.trim()} className="rounded-xl bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50">Save</button></div></form></Modal>}
