@@ -23,6 +23,56 @@ const MAX_DOCUMENT_FILE_BYTES = 10 * 1024 * 1024
 const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"])
 const ALLOWED_DOCUMENT_TYPES = new Set(["text/plain", "text/markdown", "text/x-markdown", "text/csv", "text/html", "application/json", "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"])
 
+async function readDocxPreview(file: File) {
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  let endRecord = -1
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65_557); i--) {
+    if (view.getUint32(i, true) === 0x06054b50) { endRecord = i; break }
+  }
+  if (endRecord < 0) throw new Error("This DOCX file could not be previewed.")
+  const entries = view.getUint16(endRecord + 10, true)
+  const centralOffset = view.getUint32(endRecord + 16, true)
+  if (entries > 2048 || centralOffset >= bytes.length) throw new Error("This DOCX file is too complex to preview.")
+  let cursor = centralOffset
+  for (let i = 0; i < entries; i++) {
+    if (cursor + 46 > bytes.length || view.getUint32(cursor, true) !== 0x02014b50) throw new Error("This DOCX file could not be previewed.")
+    const method = view.getUint16(cursor + 10, true)
+    const compressedSize = view.getUint32(cursor + 20, true)
+    const uncompressedSize = view.getUint32(cursor + 24, true)
+    const nameLength = view.getUint16(cursor + 28, true)
+    const extraLength = view.getUint16(cursor + 30, true)
+    const commentLength = view.getUint16(cursor + 32, true)
+    const localOffset = view.getUint32(cursor + 42, true)
+    const name = new TextDecoder().decode(bytes.slice(cursor + 46, cursor + 46 + nameLength))
+    if (name === "word/document.xml") {
+      if (uncompressedSize > 5 * 1024 * 1024 || compressedSize > bytes.length || localOffset + 30 > bytes.length) throw new Error("This DOCX file is too large to preview.")
+      if (view.getUint32(localOffset, true) !== 0x04034b50) throw new Error("This DOCX file could not be previewed.")
+      const localNameLength = view.getUint16(localOffset + 26, true)
+      const localExtraLength = view.getUint16(localOffset + 28, true)
+      const start = localOffset + 30 + localNameLength + localExtraLength
+      const compressed = bytes.slice(start, start + compressedSize)
+      if (start + compressedSize > bytes.length) throw new Error("This DOCX file could not be previewed.")
+      let xmlBytes: ArrayBuffer
+      if (method === 0) {
+        xmlBytes = compressed.buffer.slice(compressed.byteOffset, compressed.byteOffset + compressed.byteLength) as ArrayBuffer
+      } else if (method === 8 && typeof DecompressionStream !== "undefined") {
+        const stream = new Blob([compressed.buffer.slice(compressed.byteOffset, compressed.byteOffset + compressed.byteLength) as ArrayBuffer]).stream()
+          .pipeThrough(new DecompressionStream("deflate-raw" as CompressionFormat))
+        xmlBytes = await new Response(stream).arrayBuffer()
+      } else {
+        throw new Error("DOCX preview is not supported by this browser. The file can still be sent to the AI.")
+      }
+      const xml = new TextDecoder("utf-8", { fatal: true }).decode(xmlBytes)
+      return xml.replace(/<w:tab\b[^>]*\/>/g, "\t").replace(/<w:br\b[^>]*\/>/g, "\n").replace(/<\/w:p>/g, "\n")
+        .replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'").replace(/&amp;/g, "&").slice(0, 80_000)
+    }
+    cursor += 46 + nameLength + extraLength + commentLength
+  }
+  throw new Error("No document text was found in this DOCX file.")
+}
+
 function normalizeAttachment(file: File) {
   if (file.type) return file
   const ext = file.name.toLowerCase().split(".").pop()
@@ -72,22 +122,65 @@ export function PromptForm({
   onComposerFocus,
   canAttachImages,
   maxImages,
+  isPreparingAttachments = false,
 }: {
   isBusy: boolean
-  onSubmit: (text: string, files?: File[]) => void
+  onSubmit: (text: string, files?: File[]) => Promise<boolean> | boolean
   onStop: () => void
   canAttachImages: boolean
   maxImages: number
+  isPreparingAttachments?: boolean
   onComposerFocus: () => void
 }) {
   const maxSelectableImages = Math.min(MAX_IMAGE_COUNT, maxImages)
   void canAttachImages // Documents remain attachable even when the selected text model cannot accept images directly.
   const [input, setInput] = React.useState("")
   const [selectedImages, setSelectedImages] = React.useState<File[]>([])
+  const [previewFile, setPreviewFile] = React.useState<File | null>(null)
+  const [previewUrl, setPreviewUrl] = React.useState("")
+  const [previewText, setPreviewText] = React.useState("")
+  const [previewError, setPreviewError] = React.useState("")
+  const [previewLoading, setPreviewLoading] = React.useState(false)
+  const [isSubmitting, setIsSubmitting] = React.useState(false)
+  const attachmentMenuRef = React.useRef<HTMLDivElement>(null)
   const [imageError, setImageError] = React.useState("")
   const imageInputRef = React.useRef<HTMLInputElement>(null)
   const documentInputRef = React.useRef<HTMLInputElement>(null)
   const [attachmentMenuOpen, setAttachmentMenuOpen] = React.useState(false)
+  React.useEffect(() => {
+    if (!attachmentMenuOpen) return
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && !attachmentMenuRef.current?.contains(event.target)) setAttachmentMenuOpen(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") setAttachmentMenuOpen(false) }
+    document.addEventListener("pointerdown", onPointerDown, true)
+    document.addEventListener("keydown", onKeyDown)
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true)
+      document.removeEventListener("keydown", onKeyDown)
+    }
+  }, [attachmentMenuOpen])
+
+  React.useEffect(() => {
+    if (!previewFile) { setPreviewUrl(""); setPreviewText(""); setPreviewError(""); setPreviewLoading(false); return }
+    const url = URL.createObjectURL(previewFile)
+    let active = true
+    setPreviewUrl(url)
+    setPreviewText("")
+    setPreviewError("")
+    const isImage = previewFile.type.startsWith("image/")
+    const isPdf = previewFile.type === "application/pdf"
+    setPreviewLoading(!isImage && !isPdf)
+    if (!isImage && !isPdf) {
+      const loadText = previewFile.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        ? readDocxPreview(previewFile)
+        : previewFile.text()
+      void loadText.then((value) => { if (active) setPreviewText(value) })
+        .catch((error) => { if (active) setPreviewError(error instanceof Error ? error.message : "Could not preview this document.") })
+        .finally(() => { if (active) setPreviewLoading(false) })
+    }
+    return () => { active = false; URL.revokeObjectURL(url) }
+  }, [previewFile])
   const [hasAudio, setHasAudio] = React.useState(false)
   const inputRef = React.useRef("")
   const [voiceState, setVoiceState] = React.useState<VoiceState>("idle")
@@ -236,14 +329,16 @@ export function PromptForm({
       if (intent === "send") {
         const currentInput = inputRef.current.trim()
         const combined = [currentInput, transcript].filter(Boolean).join(currentInput ? " " : "")
-        onSubmit(combined || "Please analyze the attached image(s) and describe what is important.", selectedImages)
-        setSelectedImages([])
-        setImageError("")
-        inputRef.current = ""
-        setInput("")
-        if (textareaRef.current) {
-          textareaRef.current.style.height = "auto"
-          textareaRef.current.style.overflowY = "hidden"
+        const succeeded = await onSubmit(combined, selectedImages)
+        if (succeeded) {
+          setSelectedImages([])
+          setImageError("")
+          inputRef.current = ""
+          setInput("")
+          if (textareaRef.current) {
+            textareaRef.current.style.height = "auto"
+            textareaRef.current.style.overflowY = "hidden"
+          }
         }
       } else {
         appendTranscript(transcript)
@@ -516,14 +611,20 @@ export function PromptForm({
     }
     const text = inputRef.current.trim()
     if ((!text && selectedImages.length === 0) || isBusy || voiceState === "transcribing" || voiceState === "stopped") return
-    onSubmit(text || "Please analyze the attached files and describe what is important.", selectedImages)
-    setSelectedImages([])
-    setImageError("")
-    inputRef.current = ""
-    setInput("")
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto"
-      textareaRef.current.style.overflowY = "hidden"
+    setIsSubmitting(true)
+    try {
+      const succeeded = await onSubmit(text, selectedImages)
+      if (!succeeded) return
+      setSelectedImages([])
+      setImageError("")
+      inputRef.current = ""
+      setInput("")
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto"
+        textareaRef.current.style.overflowY = "hidden"
+      }
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -534,24 +635,26 @@ export function PromptForm({
   return (
     <form onSubmit={handleSubmit} className="w-full">
       {selectedImages.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-2" aria-label="Attached images">
+        <div className="mb-2 flex flex-wrap gap-2" aria-label="Attached files">
           {selectedImages.map((file) => {
             const index = selectedImages.indexOf(file)
             const preview = imagePreviews.find((item) => item.file === file)
             return (
-            <div key={`${file.name}-${file.size}-${index}`} className={preview ? "relative size-16 overflow-hidden rounded-lg border border-border bg-muted" : "flex max-w-56 items-center gap-2 rounded-lg border border-border bg-muted px-2 py-1 text-xs"}>
-              {preview ? <>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={preview.url} alt={file.name} className="size-full object-cover" />
-              </> : <span className="max-w-44 truncate">{file.name}</span>}
-              <button
+            <div key={file.name + file.size + index} className={preview ? "relative size-16 overflow-hidden rounded-lg border border-border bg-muted" : "relative flex max-w-56 items-center gap-2 rounded-lg border border-border bg-muted px-2 py-1 text-xs"}>
+              <button type="button" onClick={() => setPreviewFile(file)} aria-label={"Preview " + file.name} title={"Preview " + file.name} className={preview ? "size-full" : "flex min-w-0 items-center gap-2 pr-4 text-left"}>
+                {preview ? <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={preview.url} alt={file.name} className="size-full object-cover" />
+                </> : <><FileTextIcon className="size-4 shrink-0" /><span className="max-w-44 truncate">{file.name}</span></>}
+              </button>
+              {isPreparingAttachments || isSubmitting ? <span aria-label="Uploading attachment" role="status" className="absolute right-1 top-1 inline-flex size-5 items-center justify-center rounded-full bg-background/90 shadow"><span className="size-3 animate-spin rounded-full border-2 border-current border-t-transparent" /></span> : <button
                 type="button"
-                aria-label={`Remove ${file.name}`}
+                aria-label={"Remove " + file.name}
                 className="absolute right-0.5 top-0.5 rounded-full bg-background/90 p-0.5 text-foreground shadow"
                 onClick={() => removeSelectedImage(index)}
               >
                 <XIcon className="size-3" />
-              </button>
+              </button>}
             </div>
           )})}
         </div>
@@ -592,7 +695,7 @@ export function PromptForm({
             <>
               <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/webp" multiple className="hidden" onChange={handleImageSelection} />
               <input ref={documentInputRef} type="file" accept=".txt,.md,.csv,.json,.html,.htm,.pdf,.docx,text/plain,text/markdown,text/csv,application/json,text/html,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple className="hidden" onChange={handleImageSelection} />
-              <div className="relative">
+              <div ref={attachmentMenuRef} className="relative">
                 <InputGroupButton type="button" size="icon-sm" variant="outline" aria-label="Add attachment" title="Add attachment" disabled={isBusy} aria-haspopup="menu" aria-expanded={attachmentMenuOpen} onClick={() => setAttachmentMenuOpen((open) => !open)}>
                   <PlusIcon />
                 </InputGroupButton>
@@ -637,7 +740,7 @@ export function PromptForm({
                 variant="outline"
                 aria-label="Record voice message"
                 title="Record voice message"
-                disabled={isBusy}
+                disabled={isBusy || isPreparingAttachments || isSubmitting}
                 onClick={() => void startRecording()}
               >
                 <MicIcon />
@@ -654,14 +757,27 @@ export function PromptForm({
                 variant="default"
                 aria-label={isRecording ? "Send audio and transcribe" : isTranscribing ? "Transcribing audio" : "Send message"}
                 className="ml-auto"
-                disabled={isTranscribing || voiceState === "stopped" || (!input.trim() && selectedImages.length === 0 && !isRecording && !(voiceState === "failed" && hasAudio))}
+                disabled={isTranscribing || isPreparingAttachments || isSubmitting || voiceState === "stopped" || (!input.trim() && selectedImages.length === 0 && !isRecording && !(voiceState === "failed" && hasAudio))}
               >
-                {isRecording ? <ArrowUpIcon /> : isTranscribing ? <span className="size-3 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <ArrowUpIcon />}
+                {isRecording ? <ArrowUpIcon /> : isTranscribing || isPreparingAttachments || isSubmitting ? <span className="size-3 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <ArrowUpIcon />}
               </InputGroupButton>
             )}
           </div>
         </InputGroupAddon>
       </InputGroup>
+      {previewFile && <div role="dialog" aria-modal="true" aria-label={"Preview " + previewFile.name} className="fixed inset-0 z-[110] flex items-center justify-center bg-black/65 p-3 backdrop-blur-sm sm:p-6" onPointerDown={(event) => { if (event.target === event.currentTarget) setPreviewFile(null) }}>
+        <section className="flex max-h-[92dvh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-background text-foreground shadow-2xl">
+          <header className="flex items-center gap-3 border-b border-border px-4 py-3"><FileTextIcon className="size-4 shrink-0" /><span className="min-w-0 flex-1 truncate text-sm font-medium">{previewFile.name}</span><button type="button" onClick={() => setPreviewFile(null)} aria-label="Close preview" className="rounded-lg p-2 hover:bg-muted"><XIcon className="size-4" /></button></header>
+          <div className="min-h-0 flex-1 overflow-auto bg-muted/20 p-3 sm:p-5">
+            {previewFile.type.startsWith("image/") && previewUrl ? <div className="flex min-h-64 items-center justify-center"><img src={previewUrl} alt={previewFile.name} className="max-h-[75dvh] max-w-full object-contain" /></div>
+              : previewFile.type === "application/pdf" && previewUrl ? <iframe title={"PDF preview: " + previewFile.name} src={previewUrl} className="h-[75dvh] w-full rounded-lg bg-background" />
+              : previewLoading ? <div role="status" className="flex min-h-40 items-center justify-center"><span className="size-5 animate-spin rounded-full border-2 border-current border-t-transparent" /></div>
+              : previewError ? <p role="alert" className="p-4 text-sm text-muted-foreground">{previewError}</p>
+              : <pre className="whitespace-pre-wrap break-words rounded-lg bg-background p-4 text-sm leading-6">{previewText || "This document contains no previewable text."}</pre>}
+          </div>
+          <footer className="border-t border-border px-4 py-2 text-xs text-muted-foreground">Preview only. The original file remains selected until sending succeeds.</footer>
+        </section>
+      </div>}
     </form>
   )
 }
