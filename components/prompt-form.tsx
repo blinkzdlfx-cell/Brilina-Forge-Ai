@@ -172,6 +172,7 @@ export function PromptForm({
     if (!previewFile) { setPreviewUrl(""); setPreviewText(""); setPreviewError(""); setPreviewLoading(false); return }
     const url = URL.createObjectURL(previewFile)
     let active = true
+    let temporaryFileId: string | null = null
     setPreviewUrl(url)
     setPreviewText("")
     setPreviewError("")
@@ -179,14 +180,39 @@ export function PromptForm({
     const isPdf = previewFile.type === "application/pdf"
     setPreviewLoading(!isImage && !isPdf)
     if (!isImage && !isPdf) {
-      const loadText = previewFile.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        ? readDocxPreview(previewFile)
-        : previewFile.text()
-      void loadText.then((value) => { if (active) setPreviewText(value) })
+      const loadText = async () => {
+        if (previewFile.type !== "application/vnd.openxmlformats-officedocument.wordprocessingml.document") return previewFile.text()
+        try {
+          return await readDocxPreview(previewFile)
+        } catch {
+          // Older mobile browsers may not support raw-DEFLATE in DecompressionStream.
+          // Fall back to the existing authenticated server-side DOCX extractor.
+          const uploaded = await uploadPrivateFile(previewFile, null, "file")
+          temporaryFileId = uploaded.id
+          if (!active) {
+            await fetch("/api/files/" + encodeURIComponent(uploaded.id), { method: "DELETE" }).catch(() => undefined)
+            temporaryFileId = null
+            return ""
+          }
+          const response = await fetch("/api/files/" + encodeURIComponent(uploaded.id) + "/process", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mode: "extract", prompt: "Extract the document text for preview." }),
+          })
+          const result = await response.json().catch(() => null) as { text?: string; error?: string } | null
+          if (!response.ok || typeof result?.text !== "string") throw new Error(result?.error ?? "Could not preview this DOCX file.")
+          return result.text
+        }
+      }
+      void loadText().then((value) => { if (active) setPreviewText(value) })
         .catch((error) => { if (active) setPreviewError(error instanceof Error ? error.message : "Could not preview this document.") })
         .finally(() => { if (active) setPreviewLoading(false) })
     }
-    return () => { active = false; URL.revokeObjectURL(url) }
+    return () => {
+      active = false
+      URL.revokeObjectURL(url)
+      if (temporaryFileId) void fetch("/api/files/" + encodeURIComponent(temporaryFileId), { method: "DELETE" }).catch(() => undefined)
+    }
   }, [previewFile])
   const [hasAudio, setHasAudio] = React.useState(false)
   const inputRef = React.useRef("")
