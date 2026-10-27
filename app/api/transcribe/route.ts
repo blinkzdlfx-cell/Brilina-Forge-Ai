@@ -152,6 +152,7 @@ export async function POST(request: Request) {
   const accountId = getRuntimeEnv("CLOUDFLARE_ACCOUNT_ID")
   const apiToken = getRuntimeEnv("CLOUDFLARE_AI_API_TOKEN")
   if (!accountId || !apiToken) {
+    if (audioStoragePath) await admin.storage.from("forge-private-audio").remove([audioStoragePath])
     await recordSecureDiagnostic({ event: "transcription_provider_not_configured", route: "/api/transcribe", userId: context.user.id, requestId, statusCode: 503, details: { stage: "provider_configuration", accountIdPresent: Boolean(accountId), tokenPresent: Boolean(apiToken) } })
     return jsonError("The transcription service is not configured.", 503)
   }
@@ -181,6 +182,7 @@ export async function POST(request: Request) {
         : undefined
 
     if (!providerResponse.ok) {
+      if (audioStoragePath) await admin.storage.from("forge-private-audio").remove([audioStoragePath])
       const providerStatus = providerResponse.status
       const rateLimited = providerStatus === 429
       await recordSecureDiagnostic({ event: "transcription_provider_failed", route: "/api/transcribe", userId: context.user.id, requestId, statusCode: rateLimited ? 429 : 502, details: { stage: "cloudflare_ai_rest", providerStatus } })
@@ -191,6 +193,7 @@ export async function POST(request: Request) {
     }
 
     if (typeof result?.text !== "string") {
+      if (audioStoragePath) await admin.storage.from("forge-private-audio").remove([audioStoragePath])
       await recordSecureDiagnostic({ event: "transcription_provider_empty_result", route: "/api/transcribe", userId: context.user.id, requestId, statusCode: 502, details: { stage: "workers_ai_result", provider: "workers_ai_whisper" } })
       return jsonError("The transcription service returned no transcript.", 502)
     }
@@ -207,6 +210,7 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ text: result.text.trim() })
   } catch (error) {
+    if (audioStoragePath) await admin.storage.from("forge-private-audio").remove([audioStoragePath]).catch(() => undefined)
     const timedOut = error instanceof Error && (error.name === "TimeoutError" || /timeout/i.test(error.message))
     await recordSecureDiagnostic({ event: "transcription_provider_failed", route: "/api/transcribe", userId: context.user.id, requestId, statusCode: timedOut ? 504 : 502, details: { stage: "cloudflare_ai_rest", errorClass: error instanceof Error ? error.name.slice(0, 60) : "unknown" } })
     if (timedOut) {
