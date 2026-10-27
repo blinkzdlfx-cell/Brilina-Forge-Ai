@@ -33,7 +33,7 @@ test("file access creates short-lived signed URLs only after owner-scoped metada
   assert.match(route, /\.eq\("user_id", auth\.user\.id\)/)
   assert.match(route, /createSignedUrl\(file\.storage_path, 60\)/)
   assert.match(route, /export async function DELETE/)
-  assert.match(route, /admin\.storage\s*\.from\("forge-private-audio"\)\.download/)
+  assert.match(route, /storage\.from\(file\.bucket_id\)\.remove/)
 })
 
 test("audio transcription accepts a private file reference instead of binary request bodies", async () => {
@@ -41,7 +41,7 @@ test("audio transcription accepts a private file reference instead of binary req
   const prompt = await read("components/prompt-form.tsx")
   assert.match(route, /forge-private-audio/)
   assert.match(route, /request\.json\(\)/)
-  assert.match(route, /\.eq\("user_id", context\.user\.id\)/)
+  assert.match(route, /admin\.storage\s*\.from\("forge-private-audio"\)\.download/)
   assert.match(route, /storage\.from\("forge-private-audio"\)\s*\.download/)
   assert.doesNotMatch(route, /request\.arrayBuffer\(\)/)
   assert.match(prompt, /uploadPrivateFile\(audioFile, null, "audio"\)/)
