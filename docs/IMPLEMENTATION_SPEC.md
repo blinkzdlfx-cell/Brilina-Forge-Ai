@@ -17,6 +17,13 @@ This document retains product requirements and acceptance criteria. **Runtime/ho
 - The source currently enforces a 10-minute voice recording limit. Keep documentation aligned with the code unless an approved change is made.
 - Existing stage descriptions below define desired behavior and acceptance criteria; they are not evidence that work has or has not been implemented.
 
+## Upload and persistence reliability requirements
+
+- Binary uploads bypass Vercel Function request limits through server-authorized signed direct uploads to private Supabase Storage. A server endpoint validates user ownership, metadata, size, bucket, and uploaded object before processing.
+- Preserve the 10 MiB document/image cap, 20 MiB audio cap, and 10-minute recording session limit. Keep private per-user object paths, short-lived signed downloads, and cleanup on deletion.
+- Transcription requests send a private file ID, not audio bytes. The server verifies ownership and bucket before reading audio and calling the configured Whisper API.
+- Message saves must be idempotent by client message ID, handle sequence conflicts safely, and preserve interrupted/failed assistant state. Production migrations require separate approval.
+
 ## 1. Goals and fixed decisions
 
 - Personal project; prioritize free tiers and handle quotas, pauses, and provider failures clearly.
