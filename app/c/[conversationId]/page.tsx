@@ -38,5 +38,6 @@ export default async function ConversationPage({ params }: { params: Promise<{ c
   if (context.access.must_change_password) redirect("/change-password")
   const { data: conversation } = await context.supabase.from("conversations").select("id").eq("id", conversationId).eq("user_id", context.user.id).maybeSingle()
   if (!conversation) notFound()
-  return <Chat models={getAvailableModels()} initialConversationId={conversationId} />
+  const userName = typeof context.user.user_metadata?.full_name === "string" ? context.user.user_metadata.full_name : typeof context.user.user_metadata?.name === "string" ? context.user.user_metadata.name : null
+  return <Chat models={getAvailableModels()} initialConversationId={conversationId} userName={userName} />
 }
