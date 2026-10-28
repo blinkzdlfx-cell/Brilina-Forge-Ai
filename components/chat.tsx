@@ -100,6 +100,10 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
     // ask_user questionnaire.
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
   })
+  // A new conversation changes the useChat instance. Async send preparation can
+  // outlive the render that started it, so always submit through the latest instance.
+  const sendMessageRef = React.useRef(sendMessage)
+  sendMessageRef.current = sendMessage
 
   React.useEffect(() => {
     let cancelled = false
@@ -231,12 +235,12 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
             ...uploadedAttachments.map((file) => ({ type: "file" as const, url: "/api/files/" + encodeURIComponent(file.id) + "/view", mediaType: file.mimeType, filename: file.name })),
           ]
           submissionQueued = true
-          void sendMessage({ parts: visibleParts } as ChatUIMessage, { body: { model: resolvedModel, conversationId: targetId } })
+          void sendMessageRef.current({ parts: visibleParts } as ChatUIMessage, { body: { model: resolvedModel, conversationId: targetId } })
           return true
         }
 
         submissionQueued = true
-        void sendMessage({ text }, { body: { model: resolvedModel, conversationId: targetId } })
+        void sendMessageRef.current({ text }, { body: { model: resolvedModel, conversationId: targetId } })
         return true
       } finally {
         sendPreparationRef.current = false
@@ -244,7 +248,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
         if (!submissionQueued) forceScrollToLatestRef.current = false
       }
     },
-    [models, recentImageCount, resolvedModel, sendMessage, refreshConversations]
+    [models, recentImageCount, resolvedModel, refreshConversations]
   )
 
   const rawErrorMessage = error?.message ?? ""
@@ -314,7 +318,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
     fetch("/api/conversations/" + encodeURIComponent(initialConversationId)).then(async (response) => {
       const payload = await response.json() as { messages?: ChatMessageType[] }
       if (!response.ok || !payload.messages) throw new Error("Could not load this conversation.")
-      if (cancelled) return
+      if (cancelled || conversationIdRef.current !== initialConversationId) return
       shouldAutoFollowRef.current = true
       forceScrollToLatestRef.current = true
       setMessages(payload.messages)
