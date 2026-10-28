@@ -329,6 +329,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
         : rawErrorMessage || "The request could not be completed. Please try again."
 
   const lastMessage = messages.at(-1)
+  const isAwaitingFirstText = isBusy && (lastMessage?.role === "user" || (lastMessage?.role === "assistant" && !lastMessage.parts.some((part) => part.type === "text" && part.text.trim())))
   const firstUserMessage = messages.find((message) => message.role === "user")
   const firstUserText = firstUserMessage?.parts.find(
     (part) => part.type === "text" && !part.text.startsWith("[[FORGE_PRIVATE_ATTACHMENT_CONTEXT]]\n")
@@ -684,7 +685,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
                         />
                       </MessageScrollerItem>
                     ))}
-                    {((isBusy && lastMessage?.role === "user") || isPreparingRequest || (hasPendingSubmission && messages.length === 0)) && (
+                    {(isAwaitingFirstText || isPreparingRequest || (hasPendingSubmission && messages.length === 0)) && (
                       <MessageScrollerItem messageId="thinking">
                         <Message><MessageContent><ActivityStatus label={isPreparingRequest ? "Preparing" : status === "submitted" ? "Thinking" : "Working"} /></MessageContent></Message>
                       </MessageScrollerItem>
