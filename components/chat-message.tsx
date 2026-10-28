@@ -215,7 +215,7 @@ export function ChatMessage({
 
   return (
     <Message align="start">
-      <MessageContent>
+      <MessageContent onCopy={() => window.setTimeout(() => window.getSelection()?.removeAllRanges(), 0)}>
         {blocks.map((block, index) =>
           Array.isArray(block) ? (
             <Trace key={index}>
