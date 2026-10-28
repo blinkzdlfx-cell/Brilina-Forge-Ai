@@ -4,14 +4,18 @@ import { getRuntimeEnv } from "@/lib/runtime-env"
 
 export const CLOUDFLARE_MODEL_ID = "cloudflare-glm-4.7-flash"
 export const CLOUDFLARE_MODEL_NAME = "@cf/zai-org/glm-4.7-flash"
-export const CLOUDFLARE_GLM_53_FLASH_ID = "cloudflare-glm-5.3-flash"
-export const CLOUDFLARE_GLM_53_FLASH_NAME = "@cf/zai-org/glm-5.3-flash"
-export const CLOUDFLARE_GLM_53_ID = "cloudflare-glm-5.3"
-export const CLOUDFLARE_GLM_53_NAME = "@cf/zai-org/glm-5.3"
 export const CLOUDFLARE_GPT_OSS_120B_ID = "cloudflare-gpt-oss-120b"
 export const CLOUDFLARE_GPT_OSS_120B_NAME = "@cf/openai/gpt-oss-120b"
-export const CLOUDFLARE_KIMI_K27_ID = "cloudflare-kimi-k2.7-code"
-export const CLOUDFLARE_KIMI_K27_NAME = "@cf/moonshotai/kimi-k2.7-code"
+export const CLOUDFLARE_GEMMA_4_26B_ID = "cloudflare-gemma-4-26b"
+export const CLOUDFLARE_GEMMA_4_26B_NAME = "@cf/google/gemma-4-26b-a4b-it"
+export const CLOUDFLARE_NEMOTRON_3_120B_ID = "cloudflare-nemotron-3-120b"
+export const CLOUDFLARE_NEMOTRON_3_120B_NAME = "@cf/nvidia/nemotron-3-120b-a12b"
+
+// Internal title generation uses a small, free-tier model that is deliberately
+// not exposed in the writing-model selector.
+export const CLOUDFLARE_TITLE_MODEL_ID = "cloudflare-internal-title-gemma"
+export const CLOUDFLARE_TITLE_MODEL_NAME = "@cf/google/gemma-4-26b-a4b-it"
+
 export const CLOUDFLARE_VISION_MODEL_ID = "cloudflare-qwen3.8-27b"
 export const CLOUDFLARE_VISION_MODEL_NAME = "@cf/qwen/qwen3.8-27b"
 export const GROQ_VISION_MODEL_ID = "groq-qwen3.8-27b"
@@ -19,9 +23,9 @@ export const GROQ_VISION_MODEL_NAME = "qwen/qwen3.8-27b"
 export const GROQ_SECONDARY_VISION_MODEL_ID = "groq-muse-spark-open"
 export const GROQ_SECONDARY_VISION_MODEL_NAME = "meta-models/muse-spark-open"
 export const GOOGLE_GEMINI_FLASH_ID = "google-gemini-2.5-flash"
-export const GOOGLE_GEMINI_PRO_ID = "google-gemini-2.5-pro"
+export const GOOGLE_GEMINI_FLASH_LITE_ID = "google-gemini-2.5-flash-lite"
 export const GOOGLE_GEMINI_FLASH_NAME = "gemini-2.5-flash"
-export const GOOGLE_GEMINI_PRO_NAME = "gemini-2.5-pro"
+export const GOOGLE_GEMINI_FLASH_LITE_NAME = "gemini-2.5-flash-lite"
 
 export const DEFAULT_MODEL = CLOUDFLARE_MODEL_ID
 
@@ -32,6 +36,7 @@ export interface GatewayModel {
   name: string
   capabilities?: ModelCapability[]
   maxImages?: number
+  selectable?: boolean
 }
 
 type ModelDefinition = GatewayModel & {
@@ -49,22 +54,6 @@ const MODEL_DEFINITIONS: ModelDefinition[] = [
     providerModel: CLOUDFLARE_MODEL_NAME,
   },
   {
-    id: CLOUDFLARE_GLM_53_FLASH_ID,
-    name: "GLM 5.3 Flash",
-    capabilities: ["text"],
-    maxImages: 0,
-    provider: "cloudflare",
-    providerModel: CLOUDFLARE_GLM_53_FLASH_NAME,
-  },
-  {
-    id: CLOUDFLARE_GLM_53_ID,
-    name: "GLM 5.3",
-    capabilities: ["text"],
-    maxImages: 0,
-    provider: "cloudflare",
-    providerModel: CLOUDFLARE_GLM_53_NAME,
-  },
-  {
     id: CLOUDFLARE_GPT_OSS_120B_ID,
     name: "GPT OSS 120B",
     capabilities: ["text"],
@@ -73,28 +62,45 @@ const MODEL_DEFINITIONS: ModelDefinition[] = [
     providerModel: CLOUDFLARE_GPT_OSS_120B_NAME,
   },
   {
-    id: CLOUDFLARE_KIMI_K27_ID,
-    name: "Kimi K2.7 Code",
+    id: CLOUDFLARE_GEMMA_4_26B_ID,
+    name: "Gemma 4 26B",
     capabilities: ["text"],
     maxImages: 0,
     provider: "cloudflare",
-    providerModel: CLOUDFLARE_KIMI_K27_NAME,
+    providerModel: CLOUDFLARE_GEMMA_4_26B_NAME,
+  },
+  {
+    id: CLOUDFLARE_NEMOTRON_3_120B_ID,
+    name: "NVIDIA Nemotron 3 120B",
+    capabilities: ["text"],
+    maxImages: 0,
+    provider: "cloudflare",
+    providerModel: CLOUDFLARE_NEMOTRON_3_120B_NAME,
   },
   {
     id: GOOGLE_GEMINI_FLASH_ID,
-    name: "Google Gemini 2.5 Flash",
+    name: "Gemini 2.5 Flash",
     capabilities: ["text"],
     maxImages: 0,
     provider: "gemini",
     providerModel: GOOGLE_GEMINI_FLASH_NAME,
   },
   {
-    id: GOOGLE_GEMINI_PRO_ID,
-    name: "Google Gemini 2.5 Pro",
+    id: GOOGLE_GEMINI_FLASH_LITE_ID,
+    name: "Gemini 2.5 Flash-Lite",
     capabilities: ["text"],
     maxImages: 0,
     provider: "gemini",
-    providerModel: GOOGLE_GEMINI_PRO_NAME,
+    providerModel: GOOGLE_GEMINI_FLASH_LITE_NAME,
+  },
+  {
+    id: CLOUDFLARE_TITLE_MODEL_ID,
+    name: "Internal conversation title model",
+    capabilities: ["text"],
+    maxImages: 0,
+    selectable: false,
+    provider: "cloudflare",
+    providerModel: CLOUDFLARE_TITLE_MODEL_NAME,
   },
   {
     id: CLOUDFLARE_VISION_MODEL_ID,
@@ -123,11 +129,12 @@ const MODEL_DEFINITIONS: ModelDefinition[] = [
 ]
 
 export const MODELS: GatewayModel[] = MODEL_DEFINITIONS.map(
-  ({ id, name, capabilities, maxImages }) => ({
+  ({ id, name, capabilities, maxImages, selectable }) => ({
     id,
     name,
     capabilities,
     maxImages,
+    selectable,
   })
 )
 
@@ -145,12 +152,12 @@ export function getAvailableModels(): GatewayModel[] {
     if (model.id === DEFAULT_MODEL) return true
     if (model.id === CLOUDFLARE_VISION_MODEL_ID) return cloudflareConfigured
     if (
-      model.id === CLOUDFLARE_GLM_53_FLASH_ID ||
-      model.id === CLOUDFLARE_GLM_53_ID ||
       model.id === CLOUDFLARE_GPT_OSS_120B_ID ||
-      model.id === CLOUDFLARE_KIMI_K27_ID
+      model.id === CLOUDFLARE_GEMMA_4_26B_ID ||
+      model.id === CLOUDFLARE_NEMOTRON_3_120B_ID ||
+      model.id === CLOUDFLARE_TITLE_MODEL_ID
     ) return cloudflareConfigured
-    if (model.id === GOOGLE_GEMINI_FLASH_ID || model.id === GOOGLE_GEMINI_PRO_ID) return geminiConfigured
+    if (model.id === GOOGLE_GEMINI_FLASH_ID || model.id === GOOGLE_GEMINI_FLASH_LITE_ID) return geminiConfigured
     if (model.id === GROQ_VISION_MODEL_ID) return groqConfigured
     if (model.id === GROQ_SECONDARY_VISION_MODEL_ID) {
       return groqConfigured && secondaryGroqEnabled
