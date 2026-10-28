@@ -31,7 +31,7 @@ test("conversation API keeps response versions while exposing only the active br
     read("app/api/conversations/[conversationId]/route.ts"),
     read("app/api/conversations/[conversationId]/versions/route.ts"),
     read("app/api/conversations/[conversationId]/branch/route.ts"),
-    read("supabase/migrations/202610280001_durable_chat_streams.sql"),
+    read("supabase/migrations/20261028105759_durable_chat_streams.sql"),
   ])
   assert.match(conversationRoute, /versionCounts/)
   assert.match(conversationRoute, /filter\(\(row\) => row\.is_active_version !== false\)/)
