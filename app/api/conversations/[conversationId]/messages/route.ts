@@ -172,7 +172,18 @@ export async function POST(request: Request, context: RouteContext) {
         .eq("client_message_id", message.client_message_id)
         .maybeSingle()
       if (duplicate) {
-        existingByClientId.set(message.client_message_id, duplicate as ExistingMessageRow)
+        const duplicateRow: ExistingMessageRow = {
+          id: duplicate.id,
+          client_message_id: duplicate.client_message_id,
+          sequence_number: duplicate.sequence_number,
+          role: duplicate.role,
+          parts: duplicate.parts,
+          status: duplicate.status,
+          turn_message_id: duplicate.turn_message_id,
+          version_number: duplicate.version_number,
+          is_active_version: duplicate.is_active_version,
+        }
+        existingByClientId.set(message.client_message_id, duplicateRow)
         inserted = true
         continue
       }
