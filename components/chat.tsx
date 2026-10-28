@@ -67,7 +67,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
   }, [])
 
   const [model, setModel] = React.useState(models[0]?.id ?? "")
-  const [conversationId, setConversationId] = React.useState<string | null>(null)
+  const [conversationId, setConversationId] = React.useState<string | null>(initialConversationId)
   const [conversationsLoading, setConversationsLoading] = React.useState(true)
   const [conversationLoading, setConversationLoading] = React.useState(Boolean(initialConversationId))
   const [isPreparingAttachments, setIsPreparingAttachments] = React.useState(false)
@@ -315,7 +315,6 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
       const payload = await response.json() as { messages?: ChatMessageType[] }
       if (!response.ok || !payload.messages) throw new Error("Could not load this conversation.")
       if (cancelled) return
-      setConversationId(initialConversationId)
       shouldAutoFollowRef.current = true
       forceScrollToLatestRef.current = true
       setMessages(payload.messages)
