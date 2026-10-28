@@ -324,17 +324,30 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
     return () => { cancelled = true }
   }, [initialConversationId, setMessages])
   React.useEffect(() => {
-    if (status !== "ready" || !conversationId || messages.length === 0) return
+    // Persist partial assistant content during generation, not only after the
+    // stream ends. If the browser reloads or the network drops, the latest
+    // received text remains recoverable from conversation history.
+    if ((status !== "ready" && status !== "streaming" && status !== "submitted") || !conversationId || messages.length === 0) return
     const controller = new AbortController()
     const timer = setTimeout(() => {
+      const activeAssistantId = messages.at(-1)?.role === "assistant" ? messages.at(-1)?.id : null
       void fetch("/api/conversations/" + encodeURIComponent(conversationId) + "/messages", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: messages.map((m) => ({ id: m.id, role: m.role, parts: m.parts, status: error && m.role === "assistant" && m.id === messages.at(-1)?.id ? "interrupted" : "complete" })) }), signal: controller.signal,
+        body: JSON.stringify({ messages: messages.map((m) => ({
+          id: m.id,
+          role: m.role,
+          parts: m.parts,
+          status: m.role === "assistant" && m.id === activeAssistantId && status !== "ready"
+            ? "interrupted"
+            : error && m.role === "assistant" && m.id === activeAssistantId
+              ? "interrupted"
+              : "complete",
+        })) }), signal: controller.signal,
       }).then(async (response) => {
         if (!response.ok) { setConversationNotice("Conversation history could not be saved. An attachment may need secure upload first."); return }
-        await refreshConversations()
+        if (status === "ready") await refreshConversations()
       }).catch(() => undefined)
-    }, 300)
+    }, status === "ready" ? 300 : 700)
     return () => { clearTimeout(timer); controller.abort() }
   }, [status, conversationId, messages, error, refreshConversations])
   React.useEffect(() => {
