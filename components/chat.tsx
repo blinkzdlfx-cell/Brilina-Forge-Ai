@@ -389,8 +389,34 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
       const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
       shouldAutoFollowRef.current = distanceFromBottom < 120
     }
+    // Disable auto-follow as soon as the user expresses an intent to read
+    // upward; this prevents streaming resize events from fighting touch scrolling.
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaY < 0) shouldAutoFollowRef.current = false
+    }
+    let previousTouchY: number | null = null
+    const onTouchStart = (event: TouchEvent) => {
+      previousTouchY = event.touches[0]?.clientY ?? null
+    }
+    const onTouchMove = (event: TouchEvent) => {
+      const currentY = event.touches[0]?.clientY
+      if (currentY === undefined || previousTouchY === null) return
+      if (currentY > previousTouchY + 4) shouldAutoFollowRef.current = false
+      previousTouchY = currentY
+    }
+    const onTouchEnd = () => { previousTouchY = null }
     viewport.addEventListener("scroll", onScroll, { passive: true })
-    return () => viewport.removeEventListener("scroll", onScroll)
+    viewport.addEventListener("wheel", onWheel, { passive: true })
+    viewport.addEventListener("touchstart", onTouchStart, { passive: true })
+    viewport.addEventListener("touchmove", onTouchMove, { passive: true })
+    viewport.addEventListener("touchend", onTouchEnd, { passive: true })
+    return () => {
+      viewport.removeEventListener("scroll", onScroll)
+      viewport.removeEventListener("wheel", onWheel)
+      viewport.removeEventListener("touchstart", onTouchStart)
+      viewport.removeEventListener("touchmove", onTouchMove)
+      viewport.removeEventListener("touchend", onTouchEnd)
+    }
   }, [conversationLoading, messages.length])
 
   React.useEffect(() => {
