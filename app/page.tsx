@@ -14,5 +14,6 @@ export default async function Page() {
   const context = await getUserContext({ allowMustChange: true })
   if (!context.ok) redirect("/login")
   if (context.access.must_change_password) redirect("/change-password")
-  return <Chat models={getAvailableModels()} />
+  const userName = typeof context.user.user_metadata?.full_name === "string" ? context.user.user_metadata.full_name : typeof context.user.user_metadata?.name === "string" ? context.user.user_metadata.name : null
+  return <Chat models={getAvailableModels()} userName={userName} />
 }

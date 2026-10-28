@@ -32,6 +32,22 @@ test("new conversations receive AI-generated titles without replacing manual nam
   assert.match(chat, /\/title", \{ method: "POST" \}/)
   assert.match(chat, /document\.title =/)
   assert.doesNotMatch(backgroundRoute, /title: prompt\.slice\(0, 64\)/)
+  const messagePersistenceRoute = await read("app/api/conversations/[conversationId]/messages/route.ts")
+  assert.match(chat, /localStorage\.getItem\(modelStorageKey\)/)
+  assert.match(chat, /localStorage\.setItem\(modelStorageKey, nextModel\)/)
+  assert.match(chat, /sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls/)
+  assert.match(chat, /options: \{ body: \{ model: resolvedModel, conversationId: conversationIdRef\.current \} \}/)
+  assert.doesNotMatch(messagePersistenceRoute, /extractTitle\(/)
+  assert.match(messagePersistenceRoute, /dedicated AI title endpoint/)
+})
+
+test("new-chat suggestions use icons and no longer promote the default Next.js prompt", async () => {
+  const suggestions = await read("components/suggestions.tsx")
+  assert.match(suggestions, /BookOpenIcon/)
+  assert.match(suggestions, /SearchIcon/)
+  assert.match(suggestions, /UtensilsIcon/)
+  assert.match(suggestions, /suggestion\.icon/)
+  assert.doesNotMatch(suggestions, /What's new in Next\.js/)
 })
 
 test("collapsed sidebar hides conversation rows and retains the profile image control", async () => {

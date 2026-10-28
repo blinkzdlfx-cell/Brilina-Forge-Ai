@@ -449,9 +449,17 @@ export async function POST(req: Request) {
       onError: (error) => {
         logChatDiagnostic(requestId, "stream_error", {
           elapsedMs: elapsed(),
+          model: modelId,
           ...errorDetails(error),
         })
-        return "Something went wrong. Please try again."
+        const message = error instanceof Error ? error.message : ""
+        if (/paid plan|requires payment|billing|prepaid.*credit|insufficient.*credit|not entitled/i.test(message)) {
+          return "This Cloudflare model requires Workers Paid or prepaid AI Gateway credits. Choose GLM 4.7 Flash or GPT OSS 120B, or enable billing for this model."
+        }
+        if (/429|rate.?limit|quota/i.test(message)) {
+          return "The selected model has reached its current usage limit. Wait briefly or choose another available model."
+        }
+        return "The selected model request failed. Check its availability and billing, then retry or choose another model."
       },
       generateMessageId: () => crypto.randomUUID(),
       onFinish: async ({ responseMessage, isAborted }) => {

@@ -6,18 +6,6 @@ const MAX_MESSAGES_PER_SAVE = 100
 const MAX_PARTS_PER_MESSAGE = 24
 const MAX_PARTS_BYTES = 64 * 1024
 
-function extractTitle(parts: unknown[]) {
-  for (const part of parts) {
-    if (part && typeof part === "object" && "type" in part && "text" in part) {
-      const item = part as { type?: unknown; text?: unknown }
-      if (item.type === "text" && typeof item.text === "string" && item.text.trim()) {
-        return item.text.trim().slice(0, 64)
-      }
-    }
-  }
-  return null
-}
-
 function containsInlineDataUrl(value: unknown): boolean {
   if (typeof value === "string") return /^data:[^,]*;base64,/i.test(value)
   if (Array.isArray(value)) return value.some(containsInlineDataUrl)
@@ -185,12 +173,12 @@ export async function POST(request: Request, context: RouteContext) {
     if (!inserted) return Response.json({ error: "message_save_conflict_retry" }, { status: 409 })
   }
 
-  const title = messages.map((message) => message.role === "user" ? extractTitle(message.parts) : null).find(Boolean)
-  if (title && conversation.title === "New chat") {
-    await auth.supabase.from("conversations").update({ title }).eq("id", conversationId).eq("user_id", auth.user.id)
-  } else {
-    await auth.supabase.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", conversationId).eq("user_id", auth.user.id)
-  }
+  // Keep the placeholder title until the dedicated AI title endpoint generates a
+  // concise summary after the first complete exchange. Never title chats from raw prompts.
+  await auth.supabase.from("conversations")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", conversationId)
+    .eq("user_id", auth.user.id)
 
   return Response.json({ success: true, saved, total: messages.length })
 }
