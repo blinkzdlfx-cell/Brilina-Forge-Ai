@@ -21,12 +21,13 @@ export async function GET(request: Request) {
   const conversationId = new URL(request.url).searchParams.get("conversationId")
   if (!conversationId || !UUID_PATTERN.test(conversationId)) return Response.json({ job: null })
   const admin = createAdminClient()
-  const { data: job, error } = await admin.from("background_jobs")
-    .select("id,status,progress,stage,progress_message,updated_at")
+  const { data: latestJob, error } = await admin.from("background_jobs")
+    .select("id,status,progress,stage,progress_message,error_message,updated_at")
     .eq("conversation_id", conversationId).eq("user_id", auth.user.id)
-    .in("status", ["queued", "running"]).order("created_at", { ascending: false }).limit(1).maybeSingle()
+    .order("created_at", { ascending: false }).limit(1).maybeSingle()
   if (error) return Response.json({ error: "jobs_unavailable" }, { status: 500 })
-  return Response.json({ job: job ?? null })
+  const job = latestJob && ["queued", "running", "failed"].includes(latestJob.status) ? latestJob : null
+  return Response.json({ job })
 }
 
 export async function POST(request: Request) {
