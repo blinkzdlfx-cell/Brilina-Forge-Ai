@@ -13,12 +13,21 @@ export function createRedisClient() {
   if (!url) throw new Error("REDIS_URL is not configured")
 
   const parsed = new URL(url)
-  return createClient({
-    url,
-    ...(parsed.protocol === "rediss:"
-      ? { socket: { tls: true, servername: parsed.hostname } }
-      : {}),
-  })
+  if (parsed.protocol === "rediss:") {
+    return createClient({
+      username: parsed.username ? decodeURIComponent(parsed.username) : undefined,
+      password: parsed.password ? decodeURIComponent(parsed.password) : undefined,
+      database: parsed.pathname.length > 1 ? Number(parsed.pathname.slice(1)) : undefined,
+      socket: {
+        host: parsed.hostname,
+        port: Number(parsed.port || 6379),
+        tls: true,
+        servername: parsed.hostname,
+      },
+    })
+  }
+
+  return createClient({ url })
 }
 
 export async function getRedisClient() {
