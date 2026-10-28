@@ -107,53 +107,6 @@ export async function POST(req: Request) {
   const generationAbortController = new AbortController()
   let cancellationPoll: ReturnType<typeof setInterval> | null = null
 
-  if (resumableContext && conversationId && streamId) {
-    const { data: ownedConversation, error: conversationError } = await auth.supabase
-      .from("conversations")
-      .select("id")
-      .eq("id", conversationId)
-      .eq("user_id", auth.user.id)
-      .maybeSingle()
-    if (conversationError || !ownedConversation) {
-      return jsonError(requestId, "Conversation not found.", 404)
-    }
-    const { error: activeStreamError } = await auth.supabase
-      .from("conversations")
-      .update({
-        active_stream_id: streamId,
-        active_generation_status: "running",
-        active_assistant_message_id: null,
-        active_generation_started_at: new Date().toISOString(),
-      })
-      .eq("id", conversationId)
-      .eq("user_id", auth.user.id)
-    if (activeStreamError) {
-      logChatDiagnostic(requestId, "active_stream_persist_failed", { elapsedMs: elapsed() })
-      return jsonError(requestId, "Could not prepare resumable generation. Please retry.", 503)
-    }
-
-    // The browser connection may disappear during a refresh. Only an explicit
-    // Stop action writes this cancellation flag; the producer keeps generating
-    // while the resumable stream is consumed into Redis.
-    cancellationPoll = setInterval(() => {
-      void (async () => {
-        try {
-          const redis = await getRedisClient()
-          if (!redis) return
-          const stopped = await redis.get("forge:stop:" + streamId)
-          if (stopped) {
-            generationAbortController.abort("user_stop")
-            await redis.del("forge:stop:" + streamId)
-            if (cancellationPoll) clearInterval(cancellationPoll)
-            cancellationPoll = null
-          }
-        } catch {
-          // A transient Redis issue must not abort a response unexpectedly.
-        }
-      })()
-    }, 1000)
-  }
-
   const model = (body as { model?: unknown })?.model
   const modelId = typeof model === "string" ? model : DEFAULT_MODEL
 
@@ -280,6 +233,81 @@ export async function POST(req: Request) {
       ...errorDetails(error),
     })
     return jsonError(requestId, "Could not prepare the conversation for the AI provider.", 500)
+  }
+
+  if (resumableContext && conversationId && streamId) {
+    const { data: ownedConversation, error: conversationError } = await auth.supabase
+      .from("conversations")
+      .select("id")
+      .eq("id", conversationId)
+      .eq("user_id", auth.user.id)
+      .maybeSingle()
+    if (conversationError || !ownedConversation) {
+      return jsonError(requestId, "Conversation not found.", 404)
+    }
+
+    // Persist the triggering user turn first so a very fast assistant response
+    // cannot be sequenced ahead of its prompt.
+    const lastRawMessage = rawMessages.at(-1) as { id?: unknown; role?: unknown; parts?: unknown } | undefined
+    if (lastRawMessage?.role === "user" && typeof lastRawMessage.id === "string" && Array.isArray(lastRawMessage.parts)) {
+      const { data: existingUserMessage } = await auth.supabase.from("messages")
+        .select("id").eq("conversation_id", conversationId)
+        .eq("client_message_id", lastRawMessage.id).maybeSingle()
+      if (existingUserMessage) {
+        await auth.supabase.from("messages").update({
+          parts: lastRawMessage.parts,
+          status: "complete",
+        }).eq("id", existingUserMessage.id).eq("conversation_id", conversationId)
+      } else {
+        const { data: latest } = await auth.supabase.from("messages")
+          .select("sequence_number").eq("conversation_id", conversationId)
+          .order("sequence_number", { ascending: false }).limit(1)
+        await auth.supabase.from("messages").insert({
+          id: crypto.randomUUID(),
+          conversation_id: conversationId,
+          role: "user",
+          parts: lastRawMessage.parts,
+          sequence_number: Number(latest?.[0]?.sequence_number ?? -1) + 1,
+          status: "complete",
+          client_message_id: lastRawMessage.id,
+        })
+      }
+    }
+
+    const { error: activeStreamError } = await auth.supabase
+      .from("conversations")
+      .update({
+        active_stream_id: streamId,
+        active_generation_status: "running",
+        active_assistant_message_id: null,
+        active_generation_started_at: new Date().toISOString(),
+      })
+      .eq("id", conversationId)
+      .eq("user_id", auth.user.id)
+    if (activeStreamError) {
+      logChatDiagnostic(requestId, "active_stream_persist_failed", { elapsedMs: elapsed() })
+      return jsonError(requestId, "Could not prepare resumable generation. Please retry.", 503)
+    }
+
+    // Refreshing the page does not abort the producer. Only an explicit Stop
+    // action writes this cancellation flag.
+    cancellationPoll = setInterval(() => {
+      void (async () => {
+        try {
+          const redis = await getRedisClient()
+          if (!redis) return
+          const stopped = await redis.get("forge:stop:" + streamId)
+          if (stopped) {
+            generationAbortController.abort("user_stop")
+            await redis.del("forge:stop:" + streamId)
+            if (cancellationPoll) clearInterval(cancellationPoll)
+            cancellationPoll = null
+          }
+        } catch {
+          // A transient Redis issue must not abort a response unexpectedly.
+        }
+      })()
+    }, 1000)
   }
 
   let firstTextChunkLogged = false
