@@ -13,6 +13,8 @@ import { readJsonWithinLimit } from "@/lib/bounded-request.mjs"
 import { DEFAULT_MODEL, getLanguageModel, getModelImageLimit, isModelAllowed, isVisionModel } from "@/lib/models"
 import { getTools, type ChatUIMessage } from "@/tools"
 import { requireUser } from "@/lib/auth/require-user"
+import { getRedisClient } from "@/lib/redis-client"
+import { getResumableStreamContext } from "@/lib/resumable-stream-context"
 
 export const maxDuration = 60
 
@@ -97,6 +99,60 @@ export async function POST(req: Request) {
     return jsonError(requestId, "Invalid JSON body.", 400)
   }
   const body: unknown = parsedBody.value
+  const conversationIdValue = (body as { conversationId?: unknown })?.conversationId
+  const conversationId = typeof conversationIdValue === "string" ? conversationIdValue : null
+  const conversationIdIsValid = Boolean(conversationId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(conversationId))
+  const resumableContext = conversationIdIsValid ? getResumableStreamContext() : null
+  const streamId = resumableContext && conversationId ? crypto.randomUUID() : null
+  const generationAbortController = new AbortController()
+  let cancellationPoll: ReturnType<typeof setInterval> | null = null
+
+  if (resumableContext && conversationId && streamId) {
+    const { data: ownedConversation, error: conversationError } = await auth.supabase
+      .from("conversations")
+      .select("id")
+      .eq("id", conversationId)
+      .eq("user_id", auth.user.id)
+      .maybeSingle()
+    if (conversationError || !ownedConversation) {
+      return jsonError(requestId, "Conversation not found.", 404)
+    }
+    const { error: activeStreamError } = await auth.supabase
+      .from("conversations")
+      .update({
+        active_stream_id: streamId,
+        active_generation_status: "running",
+        active_assistant_message_id: null,
+        active_generation_started_at: new Date().toISOString(),
+      })
+      .eq("id", conversationId)
+      .eq("user_id", auth.user.id)
+    if (activeStreamError) {
+      logChatDiagnostic(requestId, "active_stream_persist_failed", { elapsedMs: elapsed() })
+      return jsonError(requestId, "Could not prepare resumable generation. Please retry.", 503)
+    }
+
+    // The browser connection may disappear during a refresh. Only an explicit
+    // Stop action writes this cancellation flag; the producer keeps generating
+    // while the resumable stream is consumed into Redis.
+    cancellationPoll = setInterval(() => {
+      void (async () => {
+        try {
+          const redis = await getRedisClient()
+          if (!redis) return
+          const stopped = await redis.get("forge:stop:" + streamId)
+          if (stopped) {
+            generationAbortController.abort("user_stop")
+            await redis.del("forge:stop:" + streamId)
+            if (cancellationPoll) clearInterval(cancellationPoll)
+            cancellationPoll = null
+          }
+        } catch {
+          // A transient Redis issue must not abort a response unexpectedly.
+        }
+      })()
+    }, 1000)
+  }
 
   const model = (body as { model?: unknown })?.model
   const modelId = typeof model === "string" ? model : DEFAULT_MODEL
@@ -237,7 +293,7 @@ export async function POST(req: Request) {
     maxOutputTokens: MAX_OUTPUT_TOKENS,
     maxRetries: 1,
     timeout: { totalMs: 55_000, stepMs: 25_000 },
-    abortSignal: req.signal,
+    abortSignal: resumableContext && streamId ? generationAbortController.signal : req.signal,
     onChunk: ({ chunk }) => {
       // Record time-to-first-text without logging the generated content.
       if (chunk.type === "text-delta" && !firstTextChunkLogged) {
@@ -248,19 +304,37 @@ export async function POST(req: Request) {
         })
       }
     },
-    onFinish: ({ finishReason, totalUsage }) => {
+    onFinish: async ({ finishReason, totalUsage }) => {
       logChatDiagnostic(requestId, "generation_finished", {
         elapsedMs: elapsed(),
         finishReason,
         inputTokens: totalUsage.inputTokens ?? null,
         outputTokens: totalUsage.outputTokens ?? null,
       })
+      if (cancellationPoll) clearInterval(cancellationPoll)
+      cancellationPoll = null
+      if (conversationId && streamId && resumableContext) {
+        await auth.supabase.from("conversations").update({
+          active_stream_id: null,
+          active_generation_status: generationAbortController.signal.aborted ? "stopped" : "completed",
+          active_assistant_message_id: null,
+        }).eq("id", conversationId).eq("user_id", auth.user.id).eq("active_stream_id", streamId)
+      }
     },
-    onAbort: ({ steps }) => {
+    onAbort: async ({ steps }) => {
       logChatDiagnostic(requestId, "generation_aborted", {
         elapsedMs: elapsed(),
         completedSteps: steps.length,
       })
+      if (cancellationPoll) clearInterval(cancellationPoll)
+      cancellationPoll = null
+      if (conversationId && streamId && resumableContext) {
+        await auth.supabase.from("conversations").update({
+          active_stream_id: null,
+          active_generation_status: "stopped",
+          active_assistant_message_id: null,
+        }).eq("id", conversationId).eq("user_id", auth.user.id).eq("active_stream_id", streamId)
+      }
     },
   })
 
@@ -309,5 +383,10 @@ export async function POST(req: Request) {
         return "Something went wrong. Please try again."
       },
     }),
+    consumeSseStream: resumableContext && streamId
+      ? async ({ stream }) => {
+          await resumableContext.createNewResumableStream(streamId, () => stream)
+        }
+      : undefined,
   })
 }
