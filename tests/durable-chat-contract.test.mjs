@@ -72,6 +72,8 @@ test("collapsed sidebar exposes the four requested actions and model labels omit
 test("new-chat submissions use the latest chat instance and initial loading cannot overwrite a later selection", async () => {
   const chat = await read("components/chat.tsx")
   assert.match(chat, /const sendMessageRef = React\.useRef\(sendMessage\)/)
+  assert.match(chat, /const setMessagesRef = React\.useRef\(setMessages\)/)
+  assert.match(chat, /setMessagesRef\.current\(payload\.messages\)/)
   assert.match(chat, /sendMessageRef\.current\(\{ text \}/)
   assert.match(chat, /conversationIdRef\.current !== initialConversationId/)
   assert.match(chat, /shouldPersistMessagesRef = React\.useRef\(false\)/)
@@ -82,4 +84,6 @@ test("long AI responses use Vercel Fluid Compute duration", async () => {
   const route = await read("app/api/chat/route.ts")
   assert.match(route, /export const maxDuration = 300/)
   assert.match(route, /timeout: \{ totalMs: 270_000, stepMs: 90_000 \}/)
+  assert.match(route, /user_message_insert_failed/)
+  assert.match(route, /assistant_final_update_failed/)
 })
