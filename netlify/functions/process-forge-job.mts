@@ -84,7 +84,6 @@ export default async function processForgeJob(request: Request) {
   const updateProgress = async (progress: number, stage: string, message: string, details: Record<string, unknown> = {}) => {
     await admin.from("background_jobs").update({
       status: "running", progress, stage, progress_message: message,
-      started_at: job.status === "queued" ? new Date().toISOString() : undefined,
       attempt: Math.max(1, job.attempt + 1),
       updated_at: new Date().toISOString(),
     }).eq("id", job.id).eq("user_id", job.user_id)
