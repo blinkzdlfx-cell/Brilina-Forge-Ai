@@ -18,7 +18,6 @@ import { ChatSidebar } from "@/components/chat-sidebar"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { PromptForm } from "@/components/prompt-form"
 import { QuestionCard } from "@/components/question-card"
-import { StatusIcon } from "@/components/status-icon"
 import { Suggestions } from "@/components/suggestions"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
@@ -37,7 +36,6 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller"
-import { Trace, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace"
 
 export function Chat({ models, initialConversationId = null }: { models: GatewayModel[]; initialConversationId?: string | null }) {
   React.useEffect(() => {
@@ -141,8 +139,8 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
 
   const isBusy = status === "submitted" || status === "streaming"
   React.useEffect(() => {
-    if (status !== "ready" || error || messages.length > 0) setHasPendingSubmission(false)
-  }, [status, error, messages.length])
+    if (status !== "ready" || error || (messages.length > 0 && !isPreparingRequest)) setHasPendingSubmission(false)
+  }, [status, error, messages.length, isPreparingRequest])
 
   const refreshAfterBackgroundJob = React.useCallback(async () => {
     const id = conversationIdRef.current
@@ -682,9 +680,9 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
                         />
                       </MessageScrollerItem>
                     ))}
-                    {isBusy && lastMessage?.role === "user" && (
+                    {((isBusy && lastMessage?.role === "user") || isPreparingRequest || hasPendingSubmission) && (
                       <MessageScrollerItem messageId="thinking">
-                        <Message><MessageContent><ActivityStatus label={status === "submitted" ? "Thinking" : "Working"} /></MessageContent></Message>
+                        <Message><MessageContent><ActivityStatus label={isPreparingRequest ? "Preparing" : status === "submitted" ? "Thinking" : "Working"} /></MessageContent></Message>
                       </MessageScrollerItem>
                     )}
                     {activeBackgroundJobId && <MessageScrollerItem messageId={"background-job-" + activeBackgroundJobId}><BackgroundJobPanel jobId={activeBackgroundJobId} onCompleted={refreshAfterBackgroundJob} /></MessageScrollerItem>}
