@@ -101,8 +101,8 @@ export async function POST(req: Request) {
   const conversationIdValue = (body as { conversationId?: unknown })?.conversationId
   const conversationId = typeof conversationIdValue === "string" ? conversationIdValue : null
   const conversationIdIsValid = Boolean(conversationId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(conversationId))
-  let resumableContext = conversationIdIsValid ? getResumableStreamContext() : null
-  let streamId = resumableContext && conversationId ? crypto.randomUUID() : null
+  let resumableContext: Awaited<ReturnType<typeof getResumableStreamContext>> = null
+  let streamId: string | null = null
   const generationAbortController = new AbortController()
   let cancellationPoll: ReturnType<typeof setInterval> | null = null
 
@@ -234,19 +234,10 @@ export async function POST(req: Request) {
     return jsonError(requestId, "Could not prepare the conversation for the AI provider.", 500)
   }
 
-  if (resumableContext && streamId) {
-    try {
-      const redis = await getRedisClient()
-      if (!redis) {
-        resumableContext = null
-        streamId = null
-      }
-    } catch {
-      // Do not make normal chat depend on Redis availability.
-      resumableContext = null
-      streamId = null
-      logChatDiagnostic(requestId, "stream_recovery_unavailable", { elapsedMs: elapsed() })
-    }
+  if (conversationIdIsValid && conversationId) {
+    resumableContext = await getResumableStreamContext()
+    if (resumableContext) streamId = crypto.randomUUID()
+    else logChatDiagnostic(requestId, "stream_recovery_unavailable", { elapsedMs: elapsed() })
   }
 
   if (resumableContext && conversationId && streamId) {
