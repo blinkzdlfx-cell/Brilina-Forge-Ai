@@ -648,6 +648,7 @@ export function PromptForm({
       const succeeded = await onSubmit(text, selectedImages, runInBackground)
       if (!succeeded) return
       setSelectedImages([])
+      setRunInBackground(false)
       setImageError("")
       inputRef.current = ""
       setInput("")
