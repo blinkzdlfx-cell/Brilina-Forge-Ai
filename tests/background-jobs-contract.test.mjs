@@ -10,6 +10,7 @@ const preferencesRoute = await readFile(new URL("../app/api/profile/preferences/
 const jobsRoute = await readFile(new URL("../app/api/jobs/route.ts", import.meta.url), "utf8")
 const jobStatusRoute = await readFile(new URL("../app/api/jobs/[jobId]/route.ts", import.meta.url), "utf8")
 const worker = await readFile(new URL("../netlify/functions/process-forge-job.mts", import.meta.url), "utf8")
+const chatRoute = await readFile(new URL("../app/api/chat/route.ts", import.meta.url), "utf8")
 const migration = await readFile(new URL("../supabase/migrations/20261028171440_background_jobs.sql", import.meta.url), "utf8")
 
 test("the chat has 50–60 rotating activity messages", () => {
@@ -35,6 +36,11 @@ test("personalization includes themes and persists authenticated preferences", (
   assert.match(preferences, /responseStyle/)
   assert.match(preferences, /approvalBeforeMerge/)
   assert.match(preferencesRoute, /auth\.supabase\.auth\.updateUser/)
+})
+
+test("ordinary chat does not initialize Layerbase Redis unless resumable streams are explicitly enabled", () => {
+  assert.match(chatRoute, /useResumableStream === true/)
+  assert.match(chatRoute, /Normal chat responses must not depend on Layerbase Redis/)
 })
 
 test("background jobs are durable, owner-scoped, and processed by Netlify", () => {
