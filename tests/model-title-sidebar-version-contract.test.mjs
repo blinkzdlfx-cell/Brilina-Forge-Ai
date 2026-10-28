@@ -22,7 +22,7 @@ test("the model registry exposes configured Gemini and expanded Cloudflare text 
   const themeProvider = await read("components/theme-provider.tsx")
   assert.match(themeProvider, /window\.localStorage\.getItem\("theme"\)/)
   assert.match(themeProvider, /if \(active && !hasLocalChoice/)
-  assert.match(themeProvider, /Do not let this initial async profile fetch overwrite a newer choice/)
+  assert.match(themeProvider, /profile fetch overwrite a newer choice/)
 })
 
 test("new conversations receive AI-generated titles without replacing manual names", async () => {
