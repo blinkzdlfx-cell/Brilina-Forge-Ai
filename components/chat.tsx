@@ -67,7 +67,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
   }, [])
 
   const [model, setModel] = React.useState(models[0]?.id ?? "")
-  const [conversationId, setConversationId] = React.useState<string | null>(null)
+  const [conversationId, setConversationId] = React.useState<string | null>(initialConversationId)
   const [conversationsLoading, setConversationsLoading] = React.useState(true)
   const [conversationLoading, setConversationLoading] = React.useState(Boolean(initialConversationId))
   const [isPreparingAttachments, setIsPreparingAttachments] = React.useState(false)
@@ -93,6 +93,9 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
     error,
     addToolOutput,
   } = useChat<ChatUIMessage>({
+    // Keep each conversation's UI state separate, including in-flight streams.
+    id: conversationId ?? undefined,
+    resume: Boolean(conversationId),
     // Resume the conversation automatically once the user has answered the
     // ask_user questionnaire.
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
@@ -228,12 +231,12 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
             ...uploadedAttachments.map((file) => ({ type: "file" as const, url: "/api/files/" + encodeURIComponent(file.id) + "/view", mediaType: file.mimeType, filename: file.name })),
           ]
           submissionQueued = true
-          void sendMessage({ parts: visibleParts } as ChatUIMessage, { body: { model: resolvedModel } })
+          void sendMessage({ parts: visibleParts } as ChatUIMessage, { body: { model: resolvedModel, conversationId: targetId } })
           return true
         }
 
         submissionQueued = true
-        void sendMessage({ text }, { body: { model: resolvedModel } })
+        void sendMessage({ text }, { body: { model: resolvedModel, conversationId: targetId } })
         return true
       } finally {
         sendPreparationRef.current = false
@@ -278,65 +281,91 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
       : undefined
 
   const startNewChat = React.useCallback(() => {
-    if (isBusy) stop()
     conversationIdRef.current = null
     setConversationId(null)
     window.history.replaceState(null, "", "/")
     setIsPreparingAttachments(false)
     shouldAutoFollowRef.current = true
     forceScrollToLatestRef.current = false
-    setMessages([])
     setConversationNotice("")
     setAttachmentError("")
-  }, [isBusy, setMessages, stop])
+  }, [])
   const openConversation = React.useCallback(async (id: string) => {
     if (conversationIdRef.current === id && !conversationLoading) return
-    if (isBusy) stop()
     shouldAutoFollowRef.current = true
     forceScrollToLatestRef.current = true
+    conversationIdRef.current = id
+    setConversationId(id)
     setConversationLoading(true)
     try {
       const response = await fetch("/api/conversations/" + encodeURIComponent(id))
       const payload = await response.json() as { messages?: ChatMessageType[] }
       if (!response.ok || !payload.messages) throw new Error("Could not load this conversation.")
-      conversationIdRef.current = id
-      setConversationId(id)
       window.history.replaceState(null, "", "/c/" + encodeURIComponent(id))
       setMessages(payload.messages)
       setConversationNotice("")
       setConversationLoading(false)
     } catch (cause) { setConversationNotice(cause instanceof Error ? cause.message : "Could not load this conversation."); setConversationLoading(false) }
-  }, [conversationLoading, isBusy, setMessages, stop])
+  }, [conversationLoading, setMessages])
   React.useEffect(() => {
     if (!initialConversationId) return
     let cancelled = false
+    conversationIdRef.current = initialConversationId
     fetch("/api/conversations/" + encodeURIComponent(initialConversationId)).then(async (response) => {
       const payload = await response.json() as { messages?: ChatMessageType[] }
       if (!response.ok || !payload.messages) throw new Error("Could not load this conversation.")
       if (cancelled) return
-      conversationIdRef.current = initialConversationId
       shouldAutoFollowRef.current = true
       forceScrollToLatestRef.current = true
-      setConversationId(initialConversationId)
       setMessages(payload.messages)
       setConversationLoading(false)
     }).catch((cause) => { if (!cancelled) { setConversationNotice(cause instanceof Error ? cause.message : "Could not load this conversation."); setConversationLoading(false) } })
     return () => { cancelled = true }
   }, [initialConversationId, setMessages])
   React.useEffect(() => {
-    if (status !== "ready" || !conversationId || messages.length === 0) return
+    // Persist partial assistant content during generation, not only after the
+    // stream ends. If the browser reloads or the network drops, the latest
+    // received text remains recoverable from conversation history.
+    if ((status !== "ready" && status !== "streaming" && status !== "submitted") || !conversationId || messages.length === 0) return
     const controller = new AbortController()
     const timer = setTimeout(() => {
+      const activeAssistantId = messages.at(-1)?.role === "assistant" ? messages.at(-1)?.id : null
       void fetch("/api/conversations/" + encodeURIComponent(conversationId) + "/messages", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: messages.map((m) => ({ id: m.id, role: m.role, parts: m.parts, status: error && m.role === "assistant" && m.id === messages.at(-1)?.id ? "interrupted" : "complete" })) }), signal: controller.signal,
+        body: JSON.stringify({ messages: messages.map((m) => ({
+          id: m.id,
+          role: m.role,
+          parts: m.parts,
+          status: m.role === "assistant" && m.id === activeAssistantId && status !== "ready"
+            ? "interrupted"
+            : error && m.role === "assistant" && m.id === activeAssistantId
+              ? "interrupted"
+              : "complete",
+        })) }), signal: controller.signal,
       }).then(async (response) => {
         if (!response.ok) { setConversationNotice("Conversation history could not be saved. An attachment may need secure upload first."); return }
-        await refreshConversations()
+        if (status === "ready") {
+          await refreshConversations()
+          // Refresh version counts after a regeneration without resetting the
+          // UI on every streamed token.
+          const historyResponse = await fetch("/api/conversations/" + encodeURIComponent(conversationId))
+          const history = await historyResponse.json().catch(() => null) as { messages?: Array<ChatMessageType & { responseVersion?: { current: number; total: number } }> } | null
+          if (historyResponse.ok && history?.messages) {
+            const currentKey = messages.map((message) => {
+              const version = (message as ChatMessageType & { responseVersion?: { current: number; total: number } }).responseVersion
+              return message.id + ":" + (version ? version.current + "/" + version.total : "")
+            }).join("|")
+            const storedKey = history.messages.map((message) => {
+              const version = message.responseVersion
+              return message.id + ":" + (version ? version.current + "/" + version.total : "")
+            }).join("|")
+            if (currentKey !== storedKey) setMessages(history.messages)
+          }
+        }
       }).catch(() => undefined)
-    }, 300)
+    }, status === "ready" ? 300 : 1000)
     return () => { clearTimeout(timer); controller.abort() }
-  }, [status, conversationId, messages, error, refreshConversations])
+  }, [status, conversationId, messages, error, refreshConversations, setMessages])
   React.useEffect(() => {
     const viewport = messageViewportRef.current
     if (!viewport) return
@@ -375,6 +404,38 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
     observer.observe(content)
     return () => observer.disconnect()
   }, [conversationLoading, messages.length])
+
+  const handleStopGeneration = React.useCallback(async () => {
+    const id = conversationIdRef.current
+    if (id) {
+      await fetch("/api/chat/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId: id }),
+      }).catch(() => undefined)
+    }
+    stop()
+  }, [stop])
+
+  const handleChangeResponseVersion = React.useCallback(async (turnMessageId: string, versionNumber: number) => {
+    const id = conversationIdRef.current
+    if (!id) return
+    const response = await fetch("/api/conversations/" + encodeURIComponent(id) + "/versions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ turnMessageId, versionNumber }),
+    })
+    if (!response.ok) {
+      setConversationNotice("Could not switch response version.")
+      return
+    }
+    const history = await fetch("/api/conversations/" + encodeURIComponent(id))
+    const payload = await history.json() as { messages?: ChatMessageType[] }
+    if (history.ok && payload.messages) {
+      setMessages(payload.messages)
+      setConversationNotice("")
+    }
+  }, [setMessages])
 
   const updateConversation = React.useCallback(async (id: string, patch: Record<string, unknown>) => {
     const response = await fetch("/api/conversations/" + encodeURIComponent(id), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) })
@@ -461,7 +522,26 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
                       >
                         <ChatMessage
                           message={message}
-                          onEdit={(editedText) => { setMessages((current) => current.slice(0, messages.findIndex((item) => item.id === message.id))); window.setTimeout(() => void handleSendMessage(editedText), 0) }}
+                          onEdit={(editedText) => {
+                          const editedConversationId = conversationIdRef.current
+                          void (async () => {
+                            if (editedConversationId) {
+                              const branchResponse = await fetch("/api/conversations/" + encodeURIComponent(editedConversationId) + "/branch", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ messageId: message.id }),
+                              })
+                              if (!branchResponse.ok) {
+                                setConversationNotice("Could not create an edited branch. Please retry.")
+                                return
+                              }
+                            }
+                            setMessages((current) => current.slice(0, current.findIndex((item) => item.id === message.id)))
+                            window.setTimeout(() => void handleSendMessage(editedText), 0)
+                          })()
+                        }}
+                        responseVersion={(message as ChatMessageType & { responseVersion?: { turnMessageId: string; current: number; total: number } }).responseVersion}
+                        onVersionChange={handleChangeResponseVersion}
                           collapseExpandedMessagesKey={collapseExpandedMessagesKey}
                           isStreaming={
                             isBusy && message.id === lastMessage?.id
@@ -471,7 +551,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
                               ? () =>
                                   regenerate({
                                     messageId: message.id,
-                                    body: { model: resolvedModel },
+                                    body: { model: resolvedModel, conversationId: conversationIdRef.current },
                                   })
                               : undefined
                           }
@@ -503,7 +583,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
                           tool: "ask_user",
                           toolCallId,
                           output: answer,
-                          options: { body: { model: resolvedModel } },
+                          options: { body: { model: resolvedModel, conversationId: conversationIdRef.current } },
                         })
                       }
                     />
@@ -527,7 +607,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
               canAttachImages={maxNewImages > 0}
               maxImages={maxNewImages}
               onSubmit={handleSendMessage}
-              onStop={() => stop()}
+              onStop={handleStopGeneration}
               onComposerFocus={() =>
                 setCollapseExpandedMessagesKey((key) => key + 1)
               }

@@ -13,8 +13,9 @@ import { readJsonWithinLimit } from "@/lib/bounded-request.mjs"
 import { DEFAULT_MODEL, getLanguageModel, getModelImageLimit, isModelAllowed, isVisionModel } from "@/lib/models"
 import { getTools, type ChatUIMessage } from "@/tools"
 import { requireUser } from "@/lib/auth/require-user"
+import { getResumableStreamContext } from "@/lib/resumable-stream-context"
 
-export const maxDuration = 30
+export const maxDuration = 60
 
 // Keep the Free Worker request path bounded. Six recent messages preserve useful
 // context without repeatedly validating the entire client-side transcript.
@@ -23,8 +24,8 @@ const MAX_CONTEXT_MESSAGES = 6
 const MAX_PARTS_PER_MESSAGE = 24
 const MAX_MESSAGE_TEXT_CHARS = 12_000
 const MAX_CONTEXT_TEXT_CHARS = 32_000
-const MAX_OUTPUT_TOKENS = 4096
-const MAX_TOOL_STEPS = 4
+const MAX_OUTPUT_TOKENS = 6144
+const MAX_TOOL_STEPS = 6
 
 function logChatDiagnostic(
   requestId: string,
@@ -97,6 +98,13 @@ export async function POST(req: Request) {
     return jsonError(requestId, "Invalid JSON body.", 400)
   }
   const body: unknown = parsedBody.value
+  const conversationIdValue = (body as { conversationId?: unknown })?.conversationId
+  const conversationId = typeof conversationIdValue === "string" ? conversationIdValue : null
+  const conversationIdIsValid = Boolean(conversationId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(conversationId))
+  let resumableContext: Awaited<ReturnType<typeof getResumableStreamContext>> = null
+  let streamId: string | null = null
+  const generationAbortController = new AbortController()
+  let cancellationPoll: ReturnType<typeof setInterval> | null = null
 
   const model = (body as { model?: unknown })?.model
   const modelId = typeof model === "string" ? model : DEFAULT_MODEL
@@ -226,6 +234,88 @@ export async function POST(req: Request) {
     return jsonError(requestId, "Could not prepare the conversation for the AI provider.", 500)
   }
 
+  if (conversationIdIsValid && conversationId) {
+    resumableContext = await getResumableStreamContext()
+    if (resumableContext) streamId = crypto.randomUUID()
+    else logChatDiagnostic(requestId, "stream_recovery_unavailable", { elapsedMs: elapsed() })
+  }
+
+  if (resumableContext && conversationId && streamId) {
+    const { data: ownedConversation, error: conversationError } = await auth.supabase
+      .from("conversations")
+      .select("id")
+      .eq("id", conversationId)
+      .eq("user_id", auth.user.id)
+      .maybeSingle()
+    if (conversationError || !ownedConversation) {
+      return jsonError(requestId, "Conversation not found.", 404)
+    }
+
+    // Persist the triggering user turn first so a very fast assistant response
+    // cannot be sequenced ahead of its prompt.
+    const lastRawMessage = rawMessages.at(-1) as { id?: unknown; role?: unknown; parts?: unknown } | undefined
+    if (lastRawMessage?.role === "user" && typeof lastRawMessage.id === "string" && Array.isArray(lastRawMessage.parts)) {
+      const { data: existingUserMessage } = await auth.supabase.from("messages")
+        .select("id").eq("conversation_id", conversationId)
+        .eq("client_message_id", lastRawMessage.id).maybeSingle()
+      if (existingUserMessage) {
+        await auth.supabase.from("messages").update({
+          parts: lastRawMessage.parts,
+          status: "complete",
+        }).eq("id", existingUserMessage.id).eq("conversation_id", conversationId)
+      } else {
+        const { data: latest } = await auth.supabase.from("messages")
+          .select("sequence_number").eq("conversation_id", conversationId)
+          .order("sequence_number", { ascending: false }).limit(1)
+        await auth.supabase.from("messages").insert({
+          id: crypto.randomUUID(),
+          conversation_id: conversationId,
+          role: "user",
+          parts: lastRawMessage.parts,
+          sequence_number: Number(latest?.[0]?.sequence_number ?? -1) + 1,
+          status: "complete",
+          client_message_id: lastRawMessage.id,
+        })
+      }
+    }
+
+    const { error: activeStreamError } = await auth.supabase
+      .from("conversations")
+      .update({
+        active_stream_id: streamId,
+        active_generation_status: "running",
+        active_assistant_message_id: null,
+        active_generation_started_at: new Date().toISOString(),
+      })
+      .eq("id", conversationId)
+      .eq("user_id", auth.user.id)
+    if (activeStreamError) {
+      logChatDiagnostic(requestId, "active_stream_persist_failed", { elapsedMs: elapsed() })
+      return jsonError(requestId, "Could not prepare resumable generation. Please retry.", 503)
+    }
+
+    // Refreshing the page does not abort the producer. Only an explicit Stop
+    // action writes this cancellation flag.
+    cancellationPoll = setInterval(() => {
+      void (async () => {
+        try {
+          const { data: currentGeneration } = await auth.supabase.from("conversations")
+            .select("active_generation_status")
+            .eq("id", conversationId)
+            .eq("user_id", auth.user.id)
+            .maybeSingle()
+          if (currentGeneration?.active_generation_status === "stopped") {
+            generationAbortController.abort("user_stop")
+            if (cancellationPoll) clearInterval(cancellationPoll)
+            cancellationPoll = null
+          }
+        } catch {
+          // A transient Redis issue must not abort a response unexpectedly.
+        }
+      })()
+    }, 1000)
+  }
+
   let firstTextChunkLogged = false
   const result = streamText({
     model: languageModel,
@@ -236,8 +326,8 @@ export async function POST(req: Request) {
     stopWhen: isStepCount(MAX_TOOL_STEPS),
     maxOutputTokens: MAX_OUTPUT_TOKENS,
     maxRetries: 1,
-    timeout: { totalMs: 27_000, stepMs: 25_000 },
-    abortSignal: req.signal,
+    timeout: { totalMs: 55_000, stepMs: 25_000 },
+    abortSignal: resumableContext && streamId ? generationAbortController.signal : req.signal,
     onChunk: ({ chunk }) => {
       // Record time-to-first-text without logging the generated content.
       if (chunk.type === "text-delta" && !firstTextChunkLogged) {
@@ -248,19 +338,30 @@ export async function POST(req: Request) {
         })
       }
     },
-    onFinish: ({ finishReason, totalUsage }) => {
+    onFinish: async ({ finishReason, totalUsage }) => {
       logChatDiagnostic(requestId, "generation_finished", {
         elapsedMs: elapsed(),
         finishReason,
         inputTokens: totalUsage.inputTokens ?? null,
         outputTokens: totalUsage.outputTokens ?? null,
       })
+      // The UI-message stream finish handler persists the final assistant message
+      // before clearing the active stream reference.
     },
-    onAbort: ({ steps }) => {
+    onAbort: async ({ steps }) => {
       logChatDiagnostic(requestId, "generation_aborted", {
         elapsedMs: elapsed(),
         completedSteps: steps.length,
       })
+      if (cancellationPoll) clearInterval(cancellationPoll)
+      cancellationPoll = null
+      if (conversationId && streamId && resumableContext) {
+        await auth.supabase.from("conversations").update({
+          active_stream_id: null,
+          active_generation_status: "stopped",
+          active_assistant_message_id: null,
+        }).eq("id", conversationId).eq("user_id", auth.user.id).eq("active_stream_id", streamId)
+      }
     },
   })
 
@@ -308,6 +409,73 @@ export async function POST(req: Request) {
         })
         return "Something went wrong. Please try again."
       },
+      generateMessageId: () => crypto.randomUUID(),
+      onFinish: async ({ responseMessage, isAborted }) => {
+        if (conversationId && conversationIdIsValid && responseMessage.role === "assistant") {
+          const lastUserMessage = [...rawMessages].reverse().find((item) => {
+            return Boolean(item && typeof item === "object" && (item as { role?: unknown }).role === "user")
+          }) as { id?: unknown } | undefined
+          const turnMessageId = typeof lastUserMessage?.id === "string" ? lastUserMessage.id : null
+          const { data: existing, error: existingError } = await auth.supabase
+            .from("messages")
+            .select("id, version_number, turn_message_id")
+            .eq("conversation_id", conversationId)
+            .eq("client_message_id", responseMessage.id)
+            .maybeSingle()
+          if (!existingError && turnMessageId) {
+            const { data: versions } = await auth.supabase.from("messages")
+              .select("id, version_number")
+              .eq("conversation_id", conversationId)
+              .eq("role", "assistant")
+              .eq("turn_message_id", turnMessageId)
+            const nextVersion = Math.max(0, ...(versions ?? []).map((row) => Number(row.version_number ?? 0))) + (existing?.turn_message_id === turnMessageId ? 0 : 1)
+            await auth.supabase.from("messages").update({ is_active_version: false })
+              .eq("conversation_id", conversationId).eq("turn_message_id", turnMessageId)
+              .eq("role", "assistant").neq("client_message_id", responseMessage.id)
+            if (existing) {
+              await auth.supabase.from("messages").update({
+                parts: responseMessage.parts,
+                status: isAborted ? "interrupted" : "complete",
+                turn_message_id: turnMessageId,
+                version_number: existing.turn_message_id === turnMessageId ? Number(existing.version_number ?? nextVersion) : nextVersion,
+                is_active_version: true,
+              }).eq("id", existing.id).eq("conversation_id", conversationId)
+            } else {
+              const { data: latest } = await auth.supabase.from("messages")
+                .select("sequence_number")
+                .eq("conversation_id", conversationId)
+                .order("sequence_number", { ascending: false })
+                .limit(1)
+              await auth.supabase.from("messages").insert({
+                id: crypto.randomUUID(),
+                conversation_id: conversationId,
+                role: "assistant",
+                parts: responseMessage.parts,
+                sequence_number: Number(latest?.[0]?.sequence_number ?? -1) + 1,
+                status: isAborted ? "interrupted" : "complete",
+                client_message_id: responseMessage.id,
+                turn_message_id: turnMessageId,
+                version_number: nextVersion,
+                is_active_version: true,
+              })
+            }
+          }
+        }
+        if (cancellationPoll) clearInterval(cancellationPoll)
+        cancellationPoll = null
+        if (conversationId && streamId && resumableContext) {
+          await auth.supabase.from("conversations").update({
+            active_stream_id: null,
+            active_generation_status: isAborted ? "stopped" : "completed",
+            active_assistant_message_id: responseMessage.id,
+          }).eq("id", conversationId).eq("user_id", auth.user.id).eq("active_stream_id", streamId)
+        }
+      },
     }),
+    consumeSseStream: resumableContext && streamId
+      ? async ({ stream }) => {
+          await resumableContext.createNewResumableStream(streamId, () => stream)
+        }
+      : undefined,
   })
 }

@@ -20,19 +20,37 @@ export async function GET(_request: Request, context: RouteContext) {
 
   const { data: rows, error } = await auth.supabase
     .from("messages")
-    .select("id, client_message_id, role, parts, sequence_number, status, created_at")
+    .select("id, client_message_id, role, parts, sequence_number, status, created_at, turn_message_id, version_number, is_active_version")
     .eq("conversation_id", conversationId)
     .order("sequence_number", { ascending: true })
     .limit(500)
   if (error) return Response.json({ error: "messages_unavailable" }, { status: 500 })
 
-  const messages = (rows ?? []).map((row) => ({
-    id: row.client_message_id || row.id,
-    role: row.role,
-    parts: row.parts,
-    status: row.status,
-    createdAt: row.created_at,
-  }))
+  const allRows = rows ?? []
+  const versionCounts = new Map<string, number>()
+  const activeVersions = new Map<string, number>()
+  for (const row of allRows) {
+    if (row.role !== "assistant" || !row.turn_message_id) continue
+    versionCounts.set(row.turn_message_id, (versionCounts.get(row.turn_message_id) ?? 0) + 1)
+    if (row.is_active_version) activeVersions.set(row.turn_message_id, Number(row.version_number ?? 1))
+  }
+
+  const messages = allRows
+    .filter((row) => row.is_active_version !== false)
+    .map((row) => ({
+      id: row.client_message_id || row.id,
+      role: row.role,
+      parts: row.parts,
+      status: row.status,
+      createdAt: row.created_at,
+      ...(row.role === "user" ? {
+        responseVersion: {
+          turnMessageId: row.client_message_id || row.id,
+          current: activeVersions.get(row.client_message_id || row.id) ?? 1,
+          total: versionCounts.get(row.client_message_id || row.id) ?? 0,
+        },
+      } : {}),
+    }))
   return Response.json({ conversation, messages })
 }
 

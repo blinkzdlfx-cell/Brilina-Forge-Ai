@@ -14,7 +14,9 @@ test("chat route uses the AI SDK native streaming response path", () => {
 })
 
 test("streaming forwards cancellation to the model request", () => {
-  assert.match(route, /abortSignal:\s*req\.signal/)
+  assert.match(route, /abortSignal:\s*resumableContext\s*&&\s*streamId\s*\?\s*generationAbortController\.signal\s*:\s*req\.signal/)
+  assert.match(route, /createNewResumableStream\(streamId/)
+  assert.match(chat, /api\/chat\/stop/)
   assert.match(chat, /\bstop\(\)/)
 })
 
@@ -31,8 +33,8 @@ test("stream lifecycle diagnostics do not log generated text", () => {
 })
 
 test("the route retains bounded tool turns and output tokens", () => {
-  assert.match(route, /const MAX_OUTPUT_TOKENS = 4096/)
-  assert.match(route, /const MAX_TOOL_STEPS = 4/)
+  assert.match(route, /const MAX_OUTPUT_TOKENS = 6144/)
+  assert.match(route, /const MAX_TOOL_STEPS = 6/)
   assert.match(route, /stopWhen:\s*isStepCount\(MAX_TOOL_STEPS\)/)
 })
 
