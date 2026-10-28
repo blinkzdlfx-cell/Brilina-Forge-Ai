@@ -25,6 +25,7 @@ Copy `.env.example` to `.env.local` for local development. Create a Supabase pro
 | `CLOUDFLARE_ACCOUNT_ID` | Yes | Cloudflare account ID used for Workers AI requests |
 | `CLOUDFLARE_AI_API_TOKEN` | Yes | Cloudflare API token with permission to call Workers AI |
 | `TAVILY_API_KEY` | For web search | Tavily API key |
+| `REDIS_URL` | Optional, for stream recovery | Layerbase Cloud Redis TLS URL (`rediss://...`); server-side only. See `docs/LAYERBASE_STREAM_RECOVERY.md`. |
 | `GROQ_API_KEY` | Optional | Enables the Groq Qwen vision model; keep server-side only |
 | `GROQ_VISION_SECONDARY_MODEL` | Optional, preview access only | Set to `meta-models/muse-spark-open` only if the Groq account is approved for this preview model |
 | `VOICE_TRANSCRIPTION_ENABLED` | Explicit opt-in | Set to `true` to enable transcription; authenticated users only, with a 10-minute browser recording limit and automatic transcription at the limit |
@@ -55,6 +56,7 @@ Vercel is the primary production application runtime. The repository's Git integ
 3. Configure `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` for build and runtime.
 4. Configure `SUPABASE_SERVICE_ROLE_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AI_API_TOKEN`, `TAVILY_API_KEY`, and any enabled `GROQ_API_KEY` / `GEMINI_API_KEY` as server-side environment variables. Never prefix server secrets with `NEXT_PUBLIC_`.
 5. Set `VOICE_TRANSCRIPTION_ENABLED=true` only when authenticated transcription is intended to be available.
+6. For refresh-resistant streaming, create a Layerbase Redis database and set its TLS connection URL as `REDIS_URL`; follow `docs/LAYERBASE_STREAM_RECOVERY.md`. Without this variable, ordinary chat works but stream recovery is disabled.
 6. After a preview deployment, test `/api/health`, authenticated chat streaming, Tavily search, voice transcription, conversation history, private file access, and document/image workflows with an authorized test account.
 
 **Vercel payload caution:** Vercel Functions document a 4.5 MB request/response payload limit. Application-level 10 MiB file and 20 MiB audio limits do not guarantee that these binary uploads can be proxied through Vercel routes. Use the verified authenticated private Supabase Storage upload flow for large files/audio, and pass compact file references to processing routes. Do not assume an oversized request reaches route-level validation.
