@@ -103,9 +103,11 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
   // A new conversation changes the useChat instance. Async send preparation can
   // outlive the render that started it, so always submit through the latest instance.
   const sendMessageRef = React.useRef(sendMessage)
-  sendMessageRef.current = sendMessage
   const setMessagesRef = React.useRef(setMessages)
-  setMessagesRef.current = setMessages
+  React.useLayoutEffect(() => {
+    sendMessageRef.current = sendMessage
+    setMessagesRef.current = setMessages
+  }, [sendMessage, setMessages])
   // Do not write a restored history snapshot back as if it were a newly
   // completed response. Only persist after a local send, regeneration, or tool reply.
   const shouldPersistMessagesRef = React.useRef(false)
@@ -317,7 +319,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
       setConversationNotice("")
       setConversationLoading(false)
     } catch (cause) { setConversationNotice(cause instanceof Error ? cause.message : "Could not load this conversation."); setConversationLoading(false) }
-  }, [conversationLoading, setMessages])
+  }, [conversationLoading])
   React.useEffect(() => {
     if (!initialConversationId) return
     let cancelled = false
@@ -332,7 +334,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
       setConversationLoading(false)
     }).catch((cause) => { if (!cancelled) { setConversationNotice(cause instanceof Error ? cause.message : "Could not load this conversation."); setConversationLoading(false) } })
     return () => { cancelled = true }
-  }, [initialConversationId, setMessages])
+  }, [initialConversationId])
   React.useEffect(() => {
     // Persist partial assistant content during generation, not only after the
     // stream ends. If the browser reloads or the network drops, the latest
@@ -381,7 +383,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
       }).catch(() => undefined)
     }, status === "ready" ? 300 : 1000)
     return () => { clearTimeout(timer); controller.abort() }
-  }, [status, conversationId, messages, error, refreshConversations, setMessages])
+  }, [status, conversationId, messages, error, refreshConversations])
   React.useEffect(() => {
     const viewport = messageViewportRef.current
     if (!viewport) return
