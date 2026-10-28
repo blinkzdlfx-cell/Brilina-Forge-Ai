@@ -77,7 +77,20 @@ export async function POST(request: Request, context: RouteContext) {
     .in("client_message_id", ids.length ? ids : ["__none__"])
   if (existingError) return Response.json({ error: "messages_unavailable" }, { status: 500 })
 
-  const existingByClientId = new Map((existingRows ?? []).map((row) => [row.client_message_id, row]))
+  type ExistingMessageRow = {
+    id: string
+    client_message_id: string
+    sequence_number: number
+    role: string
+    parts: unknown[]
+    status: string
+    turn_message_id: string | null
+    version_number: number | null
+    is_active_version: boolean | null
+  }
+  const existingByClientId = new Map<string, ExistingMessageRow>(
+    (existingRows ?? []).map((row) => [row.client_message_id, row as ExistingMessageRow])
+  )
   const { data: lastRows, error: lastError } = await auth.supabase
     .from("messages")
     .select("sequence_number")
