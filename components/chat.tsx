@@ -217,6 +217,9 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
             targetId = payload.conversation.id
             conversationIdRef.current = targetId
             setConversationId(targetId)
+            // Give React one commit to attach sendMessageRef to the new useChat instance.
+            // This replaces the old sidebar-refresh delay without blocking on network I/O.
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
             window.history.replaceState(null, "", "/c/" + encodeURIComponent(targetId))
             void refreshConversations().catch(() => undefined)
           }
