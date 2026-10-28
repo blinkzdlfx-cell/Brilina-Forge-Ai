@@ -8,7 +8,7 @@ The worker uses the application's existing configured AI model and tools. At pre
 
 ## Setup
 
-1. Apply `supabase/migrations/20261028171440_background_jobs.sql` to the Brilina Forge Supabase project.
+1. The two migrations (`20261028171440_background_jobs.sql` and `20261028171459_background_job_query_indexes.sql`) have already been applied to the current Brilina Forge Supabase project. For a different project, apply both in timestamp order; do not reapply them to the current project.
 2. Deploy this repository as a Netlify site so Netlify builds the function in `netlify/functions/process-forge-job.mts`. The function endpoint path is `/process-forge-job`.
 3. In Netlify environment variables, set:
    - `NETLIFY_WORKER_SECRET`: a long, random server-only secret.
