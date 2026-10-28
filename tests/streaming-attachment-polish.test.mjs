@@ -39,6 +39,9 @@ test("user message text remains natively selectable and copied selections are cl
 test("profile photos can be previewed before upload and pinned chats lead the sidebar", async () => {
   const sidebar = await source("../components/chat-sidebar.tsx")
   assert.match(sidebar, /avatarPreviewUrl/)
+  assert.match(sidebar, /avatarFullPreviewOpen/)
+  assert.match(sidebar, /Preview full photo/)
+  assert.match(sidebar, /Full-size profile photo/)
   assert.match(sidebar, /Save photo/)
   assert.match(sidebar, /pinned\.length > 0 \? "Pinned" : "Recent"/)
 })
