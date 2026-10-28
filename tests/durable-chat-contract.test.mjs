@@ -17,7 +17,7 @@ test("durable stream recovery uses an authenticated resumable stream and explici
   assert.match(chatRoute, /active_stream_id: streamId/)
   assert.match(resumeRoute, /requireUser\(\)/)
   assert.match(resumeRoute, /resumeExistingStream/)
-  assert.match(stopRoute, /forge:stop:/)
+  assert.match(stopRoute, /active_generation_status: "stopped"/)
   assert.match(context, /REDIS_URL/)
   assert.match(context, /publisher: createRedisClient\(\)/)
   assert.match(context, /subscriber: createRedisClient\(\)/)
