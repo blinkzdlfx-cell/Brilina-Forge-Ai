@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { CheckIcon, ChevronDown, CopyIcon, FileTextIcon, PencilIcon, Share2Icon, XIcon } from "lucide-react"
+import { CheckIcon, ChevronDown, ChevronLeft, ChevronRight, CopyIcon, FileTextIcon, PencilIcon, Share2Icon, XIcon } from "lucide-react"
 
 import {
   type ChatMessagePart,
@@ -34,12 +34,16 @@ export function ChatMessage({
   onRetry,
   onEdit,
   collapseExpandedMessagesKey = 0,
+  responseVersion,
+  onVersionChange,
 }: {
   message: ChatUIMessage
   isStreaming?: boolean
   onRetry?: () => void
   onEdit?: (text: string) => void
   collapseExpandedMessagesKey?: number
+  responseVersion?: { turnMessageId: string; current: number; total: number }
+  onVersionChange?: (turnMessageId: string, versionNumber: number) => void
 }) {
   const [userMessageExpansion, setUserMessageExpansion] = React.useState({
     key: collapseExpandedMessagesKey,
@@ -174,6 +178,13 @@ export function ChatMessage({
                   <div className="flex justify-end gap-2"><button type="button" onClick={() => setEditing(false)} className="rounded-lg px-2.5 py-1.5 text-xs hover:bg-background/70">Cancel</button><button type="submit" disabled={!editText.trim()} className="rounded-lg bg-primary px-2.5 py-1.5 text-xs text-primary-foreground disabled:opacity-50">Save & send</button></div>
                 </form> : userText && <div ref={userTextRef} data-selectable-message-text className={`select-text ${isLongUserMessage && !userMessageExpanded ? "max-h-36 overflow-hidden whitespace-pre-wrap" : "whitespace-pre-wrap"}`} onCopy={() => window.setTimeout(() => window.getSelection()?.removeAllRanges(), 0)}>{userText}</div>}
                 {isLongUserMessage && !editing && <button type="button" className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-3 py-1 text-xs font-medium transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" onClick={() => { const nextExpanded = !userMessageExpanded; setUserMessageExpansion({ key: collapseExpandedMessagesKey, expanded: nextExpanded }); if (nextExpanded) requestAnimationFrame(() => requestAnimationFrame(() => userMessageRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }))) }} aria-expanded={userMessageExpanded}>{userMessageExpanded ? "Show less" : "Show more"}<ChevronDown aria-hidden="true" className={`size-3.5 transition-transform duration-200 ${userMessageExpanded ? "rotate-180" : ""}`} /></button>}
+                {!editing && responseVersion && responseVersion.total > 1 && (
+                  <div className="mt-2 flex items-center gap-1 self-end rounded-full border border-border/60 bg-background/70 px-1 py-0.5 text-xs text-muted-foreground" aria-label={`Assistant response version ${responseVersion.current} of ${responseVersion.total}`}>
+                    <button type="button" aria-label="Previous response version" title="Previous response version" disabled={responseVersion.current <= 1} onClick={() => onVersionChange?.(responseVersion.turnMessageId, responseVersion.current - 1)} className="rounded-full p-1 hover:bg-muted disabled:opacity-30"><ChevronLeft className="size-3.5" /></button>
+                    <span className="min-w-8 text-center tabular-nums">{responseVersion.current}/{responseVersion.total}</span>
+                    <button type="button" aria-label="Next response version" title="Next response version" disabled={responseVersion.current >= responseVersion.total} onClick={() => onVersionChange?.(responseVersion.turnMessageId, responseVersion.current + 1)} className="rounded-full p-1 hover:bg-muted disabled:opacity-30"><ChevronRight className="size-3.5" /></button>
+                  </div>
+                )}
               </BubbleContent>
             </Bubble>
             {!editing && <div className="mt-1 flex items-center gap-1 text-muted-foreground opacity-0 transition-opacity group-hover/user-message:opacity-100 group-focus-within/user-message:opacity-100 max-md:hidden">
