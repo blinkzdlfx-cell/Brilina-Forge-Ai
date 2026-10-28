@@ -46,3 +46,6 @@ alter table public.background_jobs enable row level security;
 alter table public.background_job_events enable row level security;
 revoke all on table public.background_jobs from anon, authenticated;
 revoke all on table public.background_job_events from anon, authenticated;
+grant all on table public.background_jobs to service_role;
+grant all on table public.background_job_events to service_role;
+grant usage, select on sequence public.background_job_events_id_seq to service_role;
