@@ -5,7 +5,7 @@
 import * as React from "react"
 import {
   ArchiveIcon, ArchiveRestoreIcon, EllipsisIcon,
-  LogOutIcon, MessageSquareIcon, PencilIcon, PinIcon, PlusIcon, SearchIcon,
+  LogOutIcon, MessagesSquareIcon, HistoryIcon, PencilIcon, PinIcon, PlusIcon, SearchIcon,
   SettingsIcon, Trash2Icon, UploadIcon, XIcon,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
@@ -123,7 +123,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
   const renderConversation = (item: SidebarConversation) => (
     <SidebarMenuItem key={item.id} className="group/item">
       <SidebarMenuButton isActive={props.activeConversationId === item.id} tooltip={item.title} className="h-auto min-h-9 py-2 pr-9" onClick={() => selectConversation(item.id)}>
-        <MessageSquareIcon className="size-4 shrink-0" /><span className="truncate">{item.title}</span>
+        <MessagesSquareIcon className="size-4 shrink-0" /><span className="truncate">{item.title}</span>
       </SidebarMenuButton>
       {!item.archived_at && <button type="button" className={`absolute right-8 top-1.5 rounded-md p-1 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground ${item.is_pinned ? "opacity-100" : "opacity-0 group-hover/item:opacity-100 group-focus-within/item:opacity-100"} group-data-[collapsible=icon]:hidden`} aria-label={item.is_pinned ? "Unpin conversation" : "Pin conversation"} title={item.is_pinned ? "Unpin" : "Pin"} onClick={() => props.onPinConversation(item)}><PinIcon className={`size-3.5 ${item.is_pinned ? "fill-current" : ""}`} /></button>}
       <button type="button" data-sidebar-menu-trigger={item.id} aria-label={`Actions for ${item.title}`} aria-expanded={menuFor === item.id} onClick={() => setMenuFor((current) => current === item.id ? null : item.id)} className={`absolute right-1 top-1.5 rounded-md p-1 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground focus-visible:opacity-100 group-data-[collapsible=icon]:hidden ${menuFor === item.id ? "opacity-100" : "opacity-0 group-hover/item:opacity-100 group-focus-within/item:opacity-100"}`}><EllipsisIcon className="size-4" /></button>
@@ -144,10 +144,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
           <button type="button" aria-label="New chat" title="New chat" onClick={props.onNewChat} className="rounded-lg p-2 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground group-data-[collapsible=icon]:hidden"><PlusIcon className="size-4" /></button>
         </div>
         <div className="hidden gap-1 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center">
-          <button type="button" aria-label="New chat" title="New chat" onClick={props.onNewChat} className="rounded-lg p-2 hover:bg-sidebar-accent"><PlusIcon className="size-4" /></button>
-          <button type="button" aria-label="Search conversations" title="Search" onClick={() => { setSearch(""); setModal("search") }} className="rounded-lg p-2 hover:bg-sidebar-accent"><SearchIcon className="size-4" /></button>
-          <button type="button" aria-label="Pinned conversations" title="Pinned" onClick={() => setModal("pinned")} className="rounded-lg p-2 hover:bg-sidebar-accent"><PinIcon className="size-4" /></button>
-          <button type="button" aria-label="Recent conversations" title="Recent" onClick={() => setModal("recent")} className="rounded-lg p-2 hover:bg-sidebar-accent"><MessageSquareIcon className="size-4" /></button>
+          <button type="button" aria-label="Recent conversations" title="Recent conversations" onClick={() => setModal("recent")} className="rounded-lg p-2 hover:bg-sidebar-accent"><HistoryIcon className="size-4" /></button>
         </div>
       </SidebarHeader>
       <SidebarContent>
@@ -174,7 +171,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
     {(modal === "recent" || modal === "pinned" || modal === "search") && <StyledModal title={modal === "recent" ? "Recent conversations" : modal === "pinned" ? "Pinned conversations" : "Search conversations"} onClose={closeModal}>
       {modal === "search" && <label className="mb-3 flex items-center gap-2 rounded-xl border border-border px-3"><SearchIcon className="size-4 text-muted-foreground" /><input autoFocus value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search chats…" className="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none" /></label>}
       <div className="max-h-[55vh] space-y-1 overflow-y-auto">
-        {(modal === "pinned" ? pinned : modal === "search" ? searchResults : sorted).map((item) => <button key={item.id} type="button" onClick={() => selectConversation(item.id)} className={`flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-muted ${props.activeConversationId === item.id ? "bg-muted" : ""}`}><MessageSquareIcon className="size-4 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1 truncate">{item.title}</span>{item.is_pinned && <PinIcon className="size-3.5 shrink-0 text-muted-foreground" />}</button>)}
+        {(modal === "pinned" ? pinned : modal === "search" ? searchResults : sorted).map((item) => <button key={item.id} type="button" onClick={() => selectConversation(item.id)} className={`flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-muted ${props.activeConversationId === item.id ? "bg-muted" : ""}`}><MessagesSquareIcon className="size-4 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1 truncate">{item.title}</span>{item.is_pinned && <PinIcon className="size-3.5 shrink-0 text-muted-foreground" />}</button>)}
         {(modal === "pinned" ? pinned : modal === "search" ? searchResults : sorted).length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No conversations found.</p>}
       </div>
     </StyledModal>}
