@@ -48,3 +48,20 @@ test("recording and attachment selection stay available while a response is acti
   assert.doesNotMatch(promptForm, /aria-label="Add attachment"[^\n]*disabled=\{isBusy/)
   assert.doesNotMatch(promptForm, /aria-label="Record voice message"[^\n]*disabled=\{isBusy/)
 })
+
+test("collapsed sidebar shows only Recent and header separates model control from chat actions", async () => {
+  const [sidebar, header, modelSelect] = await Promise.all([
+    read("components/chat-sidebar.tsx"),
+    read("components/chat-header-controls.tsx"),
+    read("components/model-select.tsx"),
+  ])
+  assert.match(sidebar, /aria-label="Recent conversations" title="Recent conversations"/)
+  assert.doesNotMatch(sidebar, /aria-label="Search conversations" title="Search"/)
+  assert.doesNotMatch(sidebar, /aria-label="Pinned conversations" title="Pinned"/)
+  assert.match(sidebar, /MessagesSquareIcon/)
+  assert.match(header, /BRILINAFORGE/)
+  assert.match(header, /<ModelSelect models=\{models\} value=\{model\} onValueChange=\{onModelChange\} \/>/)
+  assert.match(header, /rounded-full border border-border\/70 bg-background\/85/)
+  assert.doesNotMatch(modelSelect, />Writing model</)
+  assert.match(modelSelect, /<span className="sr-only">Choose model<\/span>/)
+})
