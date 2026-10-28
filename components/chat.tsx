@@ -102,6 +102,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
     // Resume the conversation automatically once the user has answered the
     // ask_user questionnaire.
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+    onError: () => setHasPendingSubmission(false),
   })
   // A new conversation changes the useChat instance. Async send preparation can
   // outlive the render that started it, so always submit through the latest instance.
@@ -236,7 +237,11 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
           }
           const jobId = payload?.job?.id ?? payload?.jobId
           if (jobId) setActiveBackgroundJobId(jobId)
-          if (!response.ok && !jobId) throw new Error(payload?.error ?? "Could not start the background task.")
+          if (!response.ok && !jobId) {
+            setAttachmentError(payload?.error ?? "Could not start the background task.")
+            setHasPendingSubmission(false)
+            return false
+          }
           if (!response.ok) setConversationNotice(payload?.error ?? "The background task could not start.")
           submissionQueued = true
           setHasPendingSubmission(false)
