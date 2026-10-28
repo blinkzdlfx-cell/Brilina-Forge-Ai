@@ -104,6 +104,9 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
   // outlive the render that started it, so always submit through the latest instance.
   const sendMessageRef = React.useRef(sendMessage)
   sendMessageRef.current = sendMessage
+  // Do not write a restored history snapshot back as if it were a newly
+  // completed response. Only persist after a local send, regeneration, or tool reply.
+  const shouldPersistMessagesRef = React.useRef(false)
 
   React.useEffect(() => {
     let cancelled = false
@@ -235,11 +238,13 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
             ...uploadedAttachments.map((file) => ({ type: "file" as const, url: "/api/files/" + encodeURIComponent(file.id) + "/view", mediaType: file.mimeType, filename: file.name })),
           ]
           submissionQueued = true
+          shouldPersistMessagesRef.current = true
           void sendMessageRef.current({ parts: visibleParts } as ChatUIMessage, { body: { model: resolvedModel, conversationId: targetId } })
           return true
         }
 
         submissionQueued = true
+        shouldPersistMessagesRef.current = true
         void sendMessageRef.current({ text }, { body: { model: resolvedModel, conversationId: targetId } })
         return true
       } finally {
@@ -330,7 +335,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
     // Persist partial assistant content during generation, not only after the
     // stream ends. If the browser reloads or the network drops, the latest
     // received text remains recoverable from conversation history.
-    if ((status !== "ready" && status !== "streaming" && status !== "submitted") || !conversationId || messages.length === 0) return
+    if (!shouldPersistMessagesRef.current || (status !== "ready" && status !== "streaming" && status !== "submitted") || !conversationId || messages.length === 0) return
     const controller = new AbortController()
     const timer = setTimeout(() => {
       const activeAssistantId = messages.at(-1)?.role === "assistant" ? messages.at(-1)?.id : null
@@ -347,7 +352,11 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
               : "complete",
         })) }), signal: controller.signal,
       }).then(async (response) => {
-        if (!response.ok) { setConversationNotice("Conversation history could not be saved. An attachment may need secure upload first."); return }
+        if (!response.ok) {
+          setConversationNotice("Conversation history could not be saved. An attachment may need secure upload first.")
+          if (status === "ready") shouldPersistMessagesRef.current = false
+          return
+        }
         if (status === "ready") {
           await refreshConversations()
           // Refresh version counts after a regeneration without resetting the
@@ -365,6 +374,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
             }).join("|")
             if (currentKey !== storedKey) setMessages(history.messages)
           }
+          shouldPersistMessagesRef.current = false
         }
       }).catch(() => undefined)
     }, status === "ready" ? 300 : 1000)
@@ -552,11 +562,13 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
                           }
                           onRetry={
                             !isBusy && message.id === lastMessage?.id
-                              ? () =>
+                              ? () => {
+                                  shouldPersistMessagesRef.current = true
                                   regenerate({
                                     messageId: message.id,
                                     body: { model: resolvedModel, conversationId: conversationIdRef.current },
                                   })
+                                }
                               : undefined
                           }
                         />
@@ -582,14 +594,15 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
                   {pendingQuestion && (
                     <QuestionCard
                       part={pendingQuestion}
-                      onAnswer={(toolCallId, answer) =>
+                      onAnswer={(toolCallId, answer) => {
+                        shouldPersistMessagesRef.current = true
                         addToolOutput({
                           tool: "ask_user",
                           toolCallId,
                           output: answer,
                           options: { body: { model: resolvedModel, conversationId: conversationIdRef.current } },
                         })
-                      }
+                      }}
                     />
                   )}
                 </MessageScrollerViewport>
