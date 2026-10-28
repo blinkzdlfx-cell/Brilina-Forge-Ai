@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Layerbase Redis stores short-lived resumable stream data and stop-request flags. Supabase remains the source of truth for conversation messages and records the active stream ID. Redis must not become the only copy of a completed response.
+Layerbase Redis stores short-lived resumable stream data. Supabase remains the source of truth for conversation messages, active stream ID, and explicit-stop status. Redis must not become the only copy of a completed response.
 
 ## Provider and free tier
 
@@ -32,7 +32,7 @@ Use the native TLS Redis connection string for stream recovery. The Layerbase Up
 
 ## Free-tier management
 
-- Use Redis for transient stream replay and stop flags only. Do not copy conversation history or uploaded files into Redis.
+- Use Redis for transient stream replay only. Explicit Stop is stored in Supabase to avoid opening a third Redis connection for each active app instance. Do not copy conversation history or uploaded files into Redis.
 - Keep resumable stream retention short (target: one hour or less where supported) and let stop flags expire automatically. Supabase remains the durable transcript store.
 - The Free tier has a 20 concurrent connection cap. The app uses Redis connections for stream Pub/Sub plus stop/polling operations; treat this as suitable for low-volume testing, not a guarantee for high concurrent traffic.
 - The database hibernates after 15 minutes without connections, so expect a cold-start delay after inactivity. Keep the user experience able to retry and keep ordinary chat functional if Redis is unavailable.
@@ -42,6 +42,6 @@ Use the native TLS Redis connection string for stream recovery. The Layerbase Up
 
 ## Operational expectations
 
-- Supabase owns the durable conversation transcript, user/assistant messages, response versions, and active stream reference.
+- Supabase owns the durable conversation transcript, user/assistant messages, response versions, active stream reference, and explicit-stop status.
 - A stopped or completed stream should clear its active stream reference in Supabase. Redis should hold only transient replay state.
 - Before declaring the feature production-ready, test refresh during a response, switch conversations during a response, stop a response, reopen a conversation, and regenerate/select response versions.
