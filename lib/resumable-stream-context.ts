@@ -7,6 +7,10 @@ export function getResumableStreamContext() {
   // Keep deployments without Redis functional; resume is enabled once REDIS_URL
   // is configured on the Node.js/Vercel runtime.
   if (!process.env.REDIS_URL) return null
-  context ??= createResumableStreamContext({ waitUntil: after })
-  return context
+  try {
+    context ??= createResumableStreamContext({ waitUntil: after })
+    return context
+  } catch {
+    return null
+  }
 }
