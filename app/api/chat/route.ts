@@ -14,7 +14,7 @@ import { DEFAULT_MODEL, getLanguageModel, getModelImageLimit, isModelAllowed, is
 import { getTools, type ChatUIMessage } from "@/tools"
 import { requireUser } from "@/lib/auth/require-user"
 
-export const maxDuration = 30
+export const maxDuration = 60
 
 // Keep the Free Worker request path bounded. Six recent messages preserve useful
 // context without repeatedly validating the entire client-side transcript.
@@ -23,8 +23,8 @@ const MAX_CONTEXT_MESSAGES = 6
 const MAX_PARTS_PER_MESSAGE = 24
 const MAX_MESSAGE_TEXT_CHARS = 12_000
 const MAX_CONTEXT_TEXT_CHARS = 32_000
-const MAX_OUTPUT_TOKENS = 4096
-const MAX_TOOL_STEPS = 4
+const MAX_OUTPUT_TOKENS = 6144
+const MAX_TOOL_STEPS = 6
 
 function logChatDiagnostic(
   requestId: string,
@@ -236,7 +236,7 @@ export async function POST(req: Request) {
     stopWhen: isStepCount(MAX_TOOL_STEPS),
     maxOutputTokens: MAX_OUTPUT_TOKENS,
     maxRetries: 1,
-    timeout: { totalMs: 27_000, stepMs: 25_000 },
+    timeout: { totalMs: 55_000, stepMs: 25_000 },
     abortSignal: req.signal,
     onChunk: ({ chunk }) => {
       // Record time-to-first-text without logging the generated content.
