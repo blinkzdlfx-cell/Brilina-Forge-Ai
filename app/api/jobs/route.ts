@@ -32,8 +32,8 @@ export async function POST(request: Request) {
   if (!prompt || prompt.length > MAX_PROMPT_LENGTH) {
     return Response.json({ error: "prompt_must_be_between_1_and_12000_characters" }, { status: 400 })
   }
-  if (conversationId && !UUID_PATTERN.test(conversationId)) {
-    return Response.json({ error: "invalid_conversation_id" }, { status: 400 })
+  if (!conversationId || !UUID_PATTERN.test(conversationId)) {
+    return Response.json({ error: "a_valid_conversation_id_is_required" }, { status: 400 })
   }
 
   const admin = createAdminClient()
@@ -49,6 +49,7 @@ export async function POST(request: Request) {
     if (existing) return Response.json({ job: existing, reused: true }, { status: 200 })
   }
 
+  const userMessageId = crypto.randomUUID()
   const { data: job, error: createError } = await admin.from("background_jobs").insert({
     user_id: auth.user.id,
     conversation_id: conversationId,
@@ -57,7 +58,7 @@ export async function POST(request: Request) {
     progress: 0,
     stage: "queued",
     progress_message: "Task queued. Preparing the background worker.",
-    input: { prompt, model },
+    input: { prompt, model, userMessageId },
     idempotency_key: idempotencyKey,
   }).select("id,status,progress,stage,progress_message,created_at").single()
 
@@ -65,6 +66,25 @@ export async function POST(request: Request) {
     return Response.json({ error: "background_job_create_failed" }, { status: 500 })
   }
 
+  const { data: latestMessages, error: latestMessagesError } = await admin.from("messages")
+    .select("sequence_number").eq("conversation_id", conversationId)
+    .order("sequence_number", { ascending: false }).limit(1)
+  if (latestMessagesError) {
+    await admin.from("background_jobs").update({ status: "failed", stage: "persistence", error_code: "message_sequence_lookup_failed", error_message: "Could not prepare the conversation for the background task.", completed_at: new Date().toISOString() }).eq("id", job.id)
+    return Response.json({ error: "conversation_message_prepare_failed", jobId: job.id }, { status: 500 })
+  }
+  const { error: userMessageError } = await admin.from("messages").insert({
+    id: crypto.randomUUID(), conversation_id: conversationId, role: "user",
+    parts: [{ type: "text", text: prompt }],
+    sequence_number: Number(latestMessages?.[0]?.sequence_number ?? -1) + 1,
+    status: "complete", client_message_id: userMessageId,
+    turn_message_id: userMessageId, version_number: 1, is_active_version: true,
+  })
+  if (userMessageError) {
+    await admin.from("background_jobs").update({ status: "failed", stage: "persistence", error_code: "user_message_save_failed", error_message: "Could not save the task prompt to conversation history.", completed_at: new Date().toISOString() }).eq("id", job.id)
+    return Response.json({ error: "conversation_message_save_failed", jobId: job.id }, { status: 500 })
+  }
+  await admin.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", conversationId).eq("user_id", auth.user.id)
   await addEvent(admin, {
     job_id: job.id, user_id: auth.user.id, stage: "queued",
     message: "Task queued. Preparing the background worker.", progress: 0,
@@ -114,5 +134,5 @@ export async function POST(request: Request) {
     message: "Netlify accepted the task. Waiting for execution.", progress: 1,
   })
 
-  return Response.json({ job: { ...job, stage: "accepted", progress_message: "Netlify accepted the task. Waiting for execution." } }, { status: 202 })
+  return Response.json({ job: { ...job, stage: "accepted", progress_message: "Netlify accepted the task. Waiting for execution." }, userMessage: { id: userMessageId, role: "user", parts: [{ type: "text", text: prompt }] } }, { status: 202 })
 }
