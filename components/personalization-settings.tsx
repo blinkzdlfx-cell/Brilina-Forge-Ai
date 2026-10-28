@@ -45,7 +45,7 @@ export function PersonalizationSettings({ onClose }: Props) {
     return () => { active = false }
   }, [setTheme])
 
-  const update = <K extends keyof PersonalizationPreferences>(key: K, value: PersonalizationPreferences[K]) => {
+  const update = <K extends keyof PersonalizationPreferences,>(key: K, value: PersonalizationPreferences[K]) => {
     setPreferences((current) => ({ ...current, [key]: value }))
     if (key === "theme") setTheme(value as PersonalizationPreferences["theme"])
   }
