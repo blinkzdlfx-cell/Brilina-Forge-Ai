@@ -287,21 +287,20 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
     setIsPreparingAttachments(false)
     shouldAutoFollowRef.current = true
     forceScrollToLatestRef.current = false
-    setMessages([])
     setConversationNotice("")
     setAttachmentError("")
-  }, [setMessages])
+  }, [])
   const openConversation = React.useCallback(async (id: string) => {
     if (conversationIdRef.current === id && !conversationLoading) return
     shouldAutoFollowRef.current = true
     forceScrollToLatestRef.current = true
+    conversationIdRef.current = id
+    setConversationId(id)
     setConversationLoading(true)
     try {
       const response = await fetch("/api/conversations/" + encodeURIComponent(id))
       const payload = await response.json() as { messages?: ChatMessageType[] }
       if (!response.ok || !payload.messages) throw new Error("Could not load this conversation.")
-      conversationIdRef.current = id
-      setConversationId(id)
       window.history.replaceState(null, "", "/c/" + encodeURIComponent(id))
       setMessages(payload.messages)
       setConversationNotice("")
@@ -311,14 +310,14 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
   React.useEffect(() => {
     if (!initialConversationId) return
     let cancelled = false
+    conversationIdRef.current = initialConversationId
+    setConversationId(initialConversationId)
     fetch("/api/conversations/" + encodeURIComponent(initialConversationId)).then(async (response) => {
       const payload = await response.json() as { messages?: ChatMessageType[] }
       if (!response.ok || !payload.messages) throw new Error("Could not load this conversation.")
       if (cancelled) return
-      conversationIdRef.current = initialConversationId
       shouldAutoFollowRef.current = true
       forceScrollToLatestRef.current = true
-      setConversationId(initialConversationId)
       setMessages(payload.messages)
       setConversationLoading(false)
     }).catch((cause) => { if (!cancelled) { setConversationNotice(cause instanceof Error ? cause.message : "Could not load this conversation."); setConversationLoading(false) } })
