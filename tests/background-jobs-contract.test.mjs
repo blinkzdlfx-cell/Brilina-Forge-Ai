@@ -10,7 +10,7 @@ const preferencesRoute = await readFile(new URL("../app/api/profile/preferences/
 const jobsRoute = await readFile(new URL("../app/api/jobs/route.ts", import.meta.url), "utf8")
 const jobStatusRoute = await readFile(new URL("../app/api/jobs/[jobId]/route.ts", import.meta.url), "utf8")
 const worker = await readFile(new URL("../netlify/functions/process-forge-job.mts", import.meta.url), "utf8")
-const migration = await readFile(new URL("../supabase/migrations/20261028173000_background_jobs.sql", import.meta.url), "utf8")
+const migration = await readFile(new URL("../supabase/migrations/20261028171440_background_jobs.sql", import.meta.url), "utf8")
 
 test("the chat has 50–60 rotating activity messages", () => {
   const list = activity.slice(activity.indexOf("export const ACTIVITY_MESSAGES"), activity.indexOf("] as const"))
