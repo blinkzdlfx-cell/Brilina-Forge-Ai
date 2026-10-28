@@ -14,19 +14,16 @@ export function TextPart({
   isStreaming?: boolean
 }) {
   return (
-    <div className="typeset typeset-docs">
+    <div className={isStreaming
+      ? "typeset typeset-docs [&>*:last-child]:after:ml-0.5 [&>*:last-child]:after:inline-block [&>*:last-child]:after:animate-pulse [&>*:last-child]:after:text-primary [&>*:last-child]:after:content-['▍']"
+      : "typeset typeset-docs"}
+    >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{ pre: isStreaming ? StreamingPre : MarkdownPre }}
       >
         {part.text}
       </ReactMarkdown>
-      {isStreaming && (
-        <span
-          aria-hidden="true"
-          className="ml-0.5 inline-block h-[1em] w-0.5 translate-y-0.5 animate-pulse rounded-full bg-current align-text-bottom"
-        />
-      )}
     </div>
   )
 }
