@@ -138,10 +138,6 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
     : (models[0]?.id ?? "")
 
   const isBusy = status === "submitted" || status === "streaming"
-  React.useEffect(() => {
-    if (status !== "ready" || error || (messages.length > 0 && !isPreparingRequest)) setHasPendingSubmission(false)
-  }, [status, error, messages.length, isPreparingRequest])
-
   const refreshAfterBackgroundJob = React.useCallback(async () => {
     const id = conversationIdRef.current
     if (!id) return
@@ -399,7 +395,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
   }, [initialConversationId])
   React.useEffect(() => {
     const id = conversationId
-    if (!id) { setActiveBackgroundJobId(null); return }
+    if (!id) return
     let active = true
     fetch("/api/jobs?conversationId=" + encodeURIComponent(id), { cache: "no-store" }).then(async (response) => {
       if (!response.ok) return null
@@ -683,7 +679,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
                         />
                       </MessageScrollerItem>
                     ))}
-                    {((isBusy && lastMessage?.role === "user") || isPreparingRequest || hasPendingSubmission) && (
+                    {((isBusy && lastMessage?.role === "user") || isPreparingRequest || (hasPendingSubmission && messages.length === 0)) && (
                       <MessageScrollerItem messageId="thinking">
                         <Message><MessageContent><ActivityStatus label={isPreparingRequest ? "Preparing" : status === "submitted" ? "Thinking" : "Working"} /></MessageContent></Message>
                       </MessageScrollerItem>
