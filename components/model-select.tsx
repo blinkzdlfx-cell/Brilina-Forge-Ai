@@ -49,9 +49,9 @@ export function ModelSelect({
       <SelectTrigger
         aria-label="Choose writing model"
         title="Choose writing model"
-        className="h-8 w-full min-w-0 gap-1 overflow-hidden rounded-full border border-border/60 bg-background px-2 text-xs shadow-none hover:bg-muted/70 sm:min-w-28 sm:px-3"
+        className="size-8 min-w-8 justify-center rounded-full border border-transparent bg-transparent p-0 shadow-none hover:bg-muted/70"
       >
-        <span className="min-w-0 truncate">Writing model</span>
+        <span className="sr-only">Choose model</span>
       </SelectTrigger>
       <SelectContent alignItemWithTrigger={false}>
         <SelectGroup>
