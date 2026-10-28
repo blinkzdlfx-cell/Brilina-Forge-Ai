@@ -27,7 +27,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
   let streamContext
   try {
-    streamContext = getResumableStreamContext()
+    streamContext = await getResumableStreamContext()
   } catch {
     return new Response(null, { status: 204 })
   }
