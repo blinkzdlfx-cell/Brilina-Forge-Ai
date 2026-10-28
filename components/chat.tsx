@@ -37,6 +37,18 @@ import {
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller"
 
+const WELCOME_GREETINGS = {
+  morning: ["Good morning", "Ready for a fresh start?", "What are we working on today?"],
+  afternoon: ["Good afternoon", "What would you like to explore?", "Let's make progress on something."],
+  evening: ["Good evening", "What can we work through tonight?", "Ready when you are."],
+}
+
+function getWelcomeGreeting() {
+  const hour = new Date().getHours()
+  const group = hour < 12 ? WELCOME_GREETINGS.morning : hour < 17 ? WELCOME_GREETINGS.afternoon : WELCOME_GREETINGS.evening
+  return group[Math.floor(Math.random() * group.length)]
+}
+
 export function Chat({ models, initialConversationId = null }: { models: GatewayModel[]; initialConversationId?: string | null }) {
   React.useEffect(() => {
     const viewport = window.visualViewport
@@ -67,6 +79,28 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
   }, [])
 
   const [model, setModel] = React.useState(models[0]?.id ?? "")
+  const modelStorageKey = "brilina-forge-selected-model"
+
+  React.useEffect(() => {
+    try {
+      const savedModel = window.localStorage.getItem(modelStorageKey)
+      if (savedModel && models.some((item) => item.id === savedModel)) {
+        setModel(savedModel)
+      }
+    } catch {
+      // Storage may be unavailable in private or restricted browsing modes.
+    }
+  }, [models])
+
+  const handleModelChange = React.useCallback((nextModel: string) => {
+    if (!models.some((item) => item.id === nextModel)) return
+    setModel(nextModel)
+    try {
+      window.localStorage.setItem(modelStorageKey, nextModel)
+    } catch {
+      // The current selection still works for this session when storage is unavailable.
+    }
+  }, [models])
   const [conversationId, setConversationId] = React.useState<string | null>(initialConversationId)
   const [conversationsLoading, setConversationsLoading] = React.useState(true)
   const [conversationLoading, setConversationLoading] = React.useState(Boolean(initialConversationId))
@@ -323,13 +357,13 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
 
   const rawErrorMessage = error?.message ?? ""
   const readableErrorMessage =
-    /<!doctype html|<html[\\s>]|cloudflare.*1102|worker exceeded (?:resource|cpu) limits/i.test(
-      rawErrorMessage
-    )
-      ? "The chat service reached its resource limit while preparing this request. Try again with a shorter recent conversation."
-      : rawErrorMessage.length > 500
-        ? `${rawErrorMessage.slice(0, 500)}…`
-        : rawErrorMessage || "The request could not be completed. Please try again."
+    /paid plan|requires payment|billing|prepaid.*credit|insufficient.*credit|not entitled/i.test(rawErrorMessage)
+      ? "This Cloudflare model requires Workers Paid or prepaid AI Gateway credits. Choose GLM 4.7 Flash or GPT OSS 120B on your current access, or enable billing for this model."
+      : /<!doctype html|<html[\\s>]|cloudflare.*1102|worker exceeded (?:resource|cpu) limits/i.test(rawErrorMessage)
+        ? "The chat service reached its resource limit while preparing this request. Try again with a shorter recent conversation."
+        : rawErrorMessage.length > 500
+          ? `${rawErrorMessage.slice(0, 500)}…`
+          : rawErrorMessage || "The request could not be completed. Please try again."
 
   const lastMessage = messages.at(-1)
   const isAwaitingFirstText = isBusy && (lastMessage?.role === "user" || (lastMessage?.role === "assistant" && !lastMessage.parts.some((part) => part.type === "text" && part.text.trim())))
@@ -617,7 +651,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
             <ChatHeaderControls
               models={models}
               model={resolvedModel}
-              onModelChange={setModel}
+              onModelChange={handleModelChange}
               onNewChat={startNewChat}
               activeConversation={conversations.find((item) => item.id === conversationId) ?? null}
               onRenameConversation={(title) => { if (conversationId) void updateConversation(conversationId, { title }).catch((cause) => setConversationNotice(cause.message)) }}
@@ -642,10 +676,9 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
             <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-6">
               <Empty>
                 <EmptyHeader>
-                  <EmptyTitle>What can I help with?</EmptyTitle>
+                  <EmptyTitle>{getWelcomeGreeting()}</EmptyTitle>
                   <EmptyDescription>
-                    Pick a model and start chatting. Responses stream directly from the
-                    configured model provider.
+                    Ask a question, explore an idea, or start building something.
                   </EmptyDescription>
                 </EmptyHeader>
                 <EmptyContent>
