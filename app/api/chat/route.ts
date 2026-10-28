@@ -309,12 +309,16 @@ export async function POST(req: Request) {
     cancellationPoll = setInterval(() => {
       void (async () => {
         try {
-          const redis = await getRedisClient()
-          if (!redis) return
-          const stopped = await redis.get("forge:stop:" + streamId)
-          if (stopped) {
+          const redis = await getRedisClient().catch(() => null)
+          const stopFlag = redis ? await redis.get("forge:stop:" + streamId).catch(() => null) : null
+          const { data: currentGeneration } = await auth.supabase.from("conversations")
+            .select("active_generation_status")
+            .eq("id", conversationId)
+            .eq("user_id", auth.user.id)
+            .maybeSingle()
+          if (stopFlag || currentGeneration?.active_generation_status === "stopped") {
             generationAbortController.abort("user_stop")
-            await redis.del("forge:stop:" + streamId)
+            if (redis && stopFlag) await redis.del("forge:stop:" + streamId).catch(() => undefined)
             if (cancellationPoll) clearInterval(cancellationPoll)
             cancellationPoll = null
           }
