@@ -50,7 +50,7 @@ export async function POST(request: Request, context: RouteContext) {
     return Response.json({ error: "invalid_messages" }, { status: 400 })
   }
 
-  const messages: Array<{ client_message_id: string; role: "user" | "assistant"; parts: unknown[]; status: "complete" | "interrupted" | "failed" }> = []
+  const messages: Array<{ client_message_id: string; role: "user" | "assistant"; parts: unknown[]; status: "complete" | "interrupted" | "failed"; turn_message_id?: string | null; version_number?: number; is_active_version?: boolean }> = []
   for (const item of incoming) {
     if (!item || typeof item !== "object") return Response.json({ error: "invalid_message" }, { status: 400 })
     const message = item as { id?: unknown; role?: unknown; parts?: unknown; status?: unknown }
@@ -63,10 +63,16 @@ export async function POST(request: Request, context: RouteContext) {
     messages.push({ client_message_id: message.id, role: message.role, parts: message.parts, status })
   }
 
+  let latestTurnMessageId: string | null = null
+  for (const message of messages) {
+    if (message.role === "user") latestTurnMessageId = message.client_message_id
+    message.turn_message_id = message.role === "user" ? message.client_message_id : latestTurnMessageId
+  }
+
   const ids = messages.map((message) => message.client_message_id)
   const { data: existingRows, error: existingError } = await auth.supabase
     .from("messages")
-    .select("id, client_message_id, sequence_number, role, parts, status")
+    .select("id, client_message_id, sequence_number, role, parts, status, turn_message_id, version_number, is_active_version")
     .eq("conversation_id", conversationId)
     .in("client_message_id", ids.length ? ids : ["__none__"])
   if (existingError) return Response.json({ error: "messages_unavailable" }, { status: 500 })
@@ -85,16 +91,39 @@ export async function POST(request: Request, context: RouteContext) {
   for (const message of messages) {
     const existing = existingByClientId.get(message.client_message_id)
     if (existing) {
-      // A stable assistant ID may first be saved as interrupted and later be
-      // completed after a retry. Refresh that same row rather than duplicating it.
-      if (existing.role === "assistant" &&
-          (existing.status !== message.status || JSON.stringify(existing.parts) !== JSON.stringify(message.parts))) {
+      // Refresh the same row as partial chunks arrive; preserve its version
+      // identity so streaming persistence never creates duplicate turns.
+      if (existing.status !== message.status ||
+          JSON.stringify(existing.parts) !== JSON.stringify(message.parts) ||
+          existing.turn_message_id !== message.turn_message_id) {
         const { error: updateError } = await auth.supabase.from("messages")
-          .update({ parts: message.parts, status: message.status })
+          .update({
+            parts: message.parts,
+            status: message.status,
+            turn_message_id: message.turn_message_id,
+            version_number: existing.version_number ?? 1,
+            is_active_version: true,
+          })
           .eq("id", existing.id).eq("conversation_id", conversationId)
         if (updateError) return Response.json({ error: "message_update_failed" }, { status: 500 })
       }
       continue
+    }
+
+    let versionNumber = 1
+    if (message.role === "assistant" && message.turn_message_id) {
+      const { data: versions } = await auth.supabase.from("messages")
+        .select("id, version_number")
+        .eq("conversation_id", conversationId)
+        .eq("role", "assistant")
+        .eq("turn_message_id", message.turn_message_id)
+      versionNumber = Math.max(0, ...(versions ?? []).map((row) => Number(row.version_number ?? 0))) + 1
+      const { error: deactivateError } = await auth.supabase.from("messages")
+        .update({ is_active_version: false })
+        .eq("conversation_id", conversationId)
+        .eq("role", "assistant")
+        .eq("turn_message_id", message.turn_message_id)
+      if (deactivateError) return Response.json({ error: "message_version_update_failed" }, { status: 500 })
     }
 
     let inserted = false
@@ -107,6 +136,9 @@ export async function POST(request: Request, context: RouteContext) {
         sequence_number: nextSequence,
         status: message.status,
         client_message_id: message.client_message_id,
+        turn_message_id: message.turn_message_id,
+        version_number: versionNumber,
+        is_active_version: true,
       })
       if (!insertError) {
         nextSequence += 1
