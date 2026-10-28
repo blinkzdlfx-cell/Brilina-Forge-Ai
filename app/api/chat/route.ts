@@ -403,19 +403,36 @@ export async function POST(req: Request) {
         })
         return "Something went wrong. Please try again."
       },
+      generateMessageId: () => crypto.randomUUID(),
       onFinish: async ({ responseMessage, isAborted }) => {
         if (conversationId && conversationIdIsValid && responseMessage.role === "assistant") {
+          const lastUserMessage = [...rawMessages].reverse().find((item) => {
+            return Boolean(item && typeof item === "object" && (item as { role?: unknown }).role === "user")
+          }) as { id?: unknown } | undefined
+          const turnMessageId = typeof lastUserMessage?.id === "string" ? lastUserMessage.id : null
           const { data: existing, error: existingError } = await auth.supabase
             .from("messages")
-            .select("id")
+            .select("id, version_number")
             .eq("conversation_id", conversationId)
             .eq("client_message_id", responseMessage.id)
             .maybeSingle()
-          if (!existingError) {
+          if (!existingError && turnMessageId) {
+            const { data: versions } = await auth.supabase.from("messages")
+              .select("id, version_number")
+              .eq("conversation_id", conversationId)
+              .eq("role", "assistant")
+              .eq("turn_message_id", turnMessageId)
+            const nextVersion = Math.max(0, ...(versions ?? []).map((row) => Number(row.version_number ?? 0))) + (existing ? 0 : 1)
+            await auth.supabase.from("messages").update({ is_active_version: false })
+              .eq("conversation_id", conversationId).eq("turn_message_id", turnMessageId)
+              .eq("role", "assistant").neq("client_message_id", responseMessage.id)
             if (existing) {
               await auth.supabase.from("messages").update({
                 parts: responseMessage.parts,
                 status: isAborted ? "interrupted" : "complete",
+                turn_message_id: turnMessageId,
+                version_number: Number(existing.version_number ?? nextVersion),
+                is_active_version: true,
               }).eq("id", existing.id).eq("conversation_id", conversationId)
             } else {
               const { data: latest } = await auth.supabase.from("messages")
@@ -431,6 +448,9 @@ export async function POST(req: Request) {
                 sequence_number: Number(latest?.[0]?.sequence_number ?? -1) + 1,
                 status: isAborted ? "interrupted" : "complete",
                 client_message_id: responseMessage.id,
+                turn_message_id: turnMessageId,
+                version_number: nextVersion,
+                is_active_version: true,
               })
             }
           }
