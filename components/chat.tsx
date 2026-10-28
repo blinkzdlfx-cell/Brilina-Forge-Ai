@@ -553,7 +553,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
                               ? () =>
                                   regenerate({
                                     messageId: message.id,
-                                    body: { model: resolvedModel },
+                                    body: { model: resolvedModel, conversationId: conversationIdRef.current },
                                   })
                               : undefined
                           }
@@ -585,7 +585,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
                           tool: "ask_user",
                           toolCallId,
                           output: answer,
-                          options: { body: { model: resolvedModel } },
+                          options: { body: { model: resolvedModel, conversationId: conversationIdRef.current } },
                         })
                       }
                     />
