@@ -4,7 +4,8 @@ A streaming AI assistant built with Next.js, the AI SDK, and shadcn components. 
 
 ## AI, search, and voice input
 
-- **Chat model:** Cloudflare Workers AI `@cf/zai-org/glm-4.7-flash`, accessed through Cloudflare's OpenAI-compatible endpoint. Responses stream through the AI SDK; request bytes, recent context, model output, and tool steps are bounded.
+- **Writing models:** The selector includes Cloudflare Workers AI models intended for the Workers Free plan: GLM 4.7 Flash, GPT OSS 120B, Gemma 4 26B, and NVIDIA Nemotron 3 120B. Gemini 2.5 Flash and Gemini 2.5 Flash-Lite are added when `GOOGLE_GENERATIVE_AI_API_KEY` is configured. Provider free-tier quotas and availability still apply; Cloudflare reserves some larger models for paid billing.
+- **Conversation titles:** A separate internal Gemma model generates concise titles and is deliberately hidden from the user-facing model selector. It uses the existing Cloudflare Workers AI credentials.
 - **Image understanding:** Optional vision models are Cloudflare Workers AI `@cf/qwen/qwen3.8-27b` and Groq `qwen/qwen3.8-27b`. Groq's `meta-models/muse-spark-open` is a limited preview and is shown only when explicitly configured. The app accepts PNG/JPEG/WebP images up to 1 MiB each and 3 MiB total. The Cloudflare vision route is limited to one image per request; Groq Qwen is limited to three. These are application limits unless a stricter provider limit applies.
 - **Web search:** Tavily's independent search API. The server bounds response bodies, retries one transient failure within the timeout budget, deduplicates normalized HTTPS source URLs, truncates excerpts, marks partial results, and returns safe errors.
 - **Voice input:** Authenticated users receive a server-created recording session before the browser records audio. The server enforces a maximum 10-minute session, and the browser automatically stops and transcribes at the limit. Stop inserts the transcript without sending; Send transcribes and sends through the existing chat flow; X cancels. No recording timer is displayed. Failed audio can be retried once during the current page session.
@@ -24,6 +25,7 @@ Copy `.env.example` to `.env.local` for local development. Create a Supabase pro
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes, server only | Privileged server-side operations; never expose to the browser |
 | `CLOUDFLARE_ACCOUNT_ID` | Yes | Cloudflare account ID used for Workers AI requests |
 | `CLOUDFLARE_AI_API_TOKEN` | Yes | Cloudflare API token with permission to call Workers AI |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | Optional | Adds Gemini 2.5 Flash and Gemini 2.5 Flash-Lite to the writing-model selector; server-side only |
 | `TAVILY_API_KEY` | For web search | Tavily API key |
 | `REDIS_URL` | Optional, for stream recovery | Layerbase Cloud Redis TLS URL (`rediss://...`); server-side only. See `docs/LAYERBASE_STREAM_RECOVERY.md`. |
 | `GROQ_API_KEY` | Optional | Enables the Groq Qwen vision model; keep server-side only |
