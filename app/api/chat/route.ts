@@ -278,7 +278,7 @@ export async function POST(req: Request) {
   const reasoningStarts = new Map<string, { index: number; time: number }>()
 
   return createUIMessageStreamResponse({
-    headers: { "x-forge-request-id": requestId },
+    headers: { "x-forge-request-id": requestId, "Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no" },
     stream: toUIMessageStream({
       stream: result.stream,
       sendSources: true,
