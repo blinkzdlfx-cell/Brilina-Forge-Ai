@@ -28,6 +28,7 @@ export function ModelSelect({
       models
         .filter(
           (model) =>
+            model.selectable !== false &&
             model.capabilities?.includes("text") &&
             !model.capabilities?.includes("vision")
         )
