@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { CheckIcon, ChevronDown, ChevronLeft, ChevronRight, CopyIcon, FileTextIcon, PencilIcon, Share2Icon, XIcon } from "lucide-react"
+import { CheckIcon, ChevronDown, ChevronLeft, ChevronRight, CopyIcon, FileTextIcon, HistoryIcon, PencilIcon, Share2Icon, XIcon } from "lucide-react"
 
 import {
   type ChatMessagePart,
@@ -54,6 +54,7 @@ export function ChatMessage({
     userMessageExpansion.key === collapseExpandedMessagesKey &&
     userMessageExpansion.expanded
   const [mobileActionsOpen, setMobileActionsOpen] = React.useState(false)
+  const [versionSelectorOpen, setVersionSelectorOpen] = React.useState(false)
   const [promptCopied, setPromptCopied] = React.useState(false)
   const [previewAttachment, setPreviewAttachment] = React.useState<{ url: string; filename: string; mediaType: string; previewText: string } | null>(null)
   const [editing, setEditing] = React.useState(false)
@@ -178,24 +179,30 @@ export function ChatMessage({
                   <div className="flex justify-end gap-2"><button type="button" onClick={() => setEditing(false)} className="rounded-lg px-2.5 py-1.5 text-xs hover:bg-background/70">Cancel</button><button type="submit" disabled={!editText.trim()} className="rounded-lg bg-primary px-2.5 py-1.5 text-xs text-primary-foreground disabled:opacity-50">Save & send</button></div>
                 </form> : userText && <div ref={userTextRef} data-selectable-message-text className={`select-text ${isLongUserMessage && !userMessageExpanded ? "max-h-36 overflow-hidden whitespace-pre-wrap" : "whitespace-pre-wrap"}`} onCopy={() => window.setTimeout(() => window.getSelection()?.removeAllRanges(), 0)}>{userText}</div>}
                 {isLongUserMessage && !editing && <button type="button" className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-3 py-1 text-xs font-medium transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" onClick={() => { const nextExpanded = !userMessageExpanded; setUserMessageExpansion({ key: collapseExpandedMessagesKey, expanded: nextExpanded }); if (nextExpanded) requestAnimationFrame(() => requestAnimationFrame(() => userMessageRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }))) }} aria-expanded={userMessageExpanded}>{userMessageExpanded ? "Show less" : "Show more"}<ChevronDown aria-hidden="true" className={`size-3.5 transition-transform duration-200 ${userMessageExpanded ? "rotate-180" : ""}`} /></button>}
-                {!editing && responseVersion && responseVersion.total > 1 && (
-                  <div className="mt-2 flex items-center gap-1 self-end rounded-full border border-border/60 bg-background/70 px-1 py-0.5 text-xs text-muted-foreground" aria-label={`Assistant response version ${responseVersion.current} of ${responseVersion.total}`}>
-                    <button type="button" aria-label="Previous response version" title="Previous response version" disabled={responseVersion.current <= 1} onClick={() => onVersionChange?.(responseVersion.turnMessageId, responseVersion.current - 1)} className="rounded-full p-1 hover:bg-muted disabled:opacity-30"><ChevronLeft className="size-3.5" /></button>
-                    <span className="min-w-8 text-center tabular-nums">{responseVersion.current}/{responseVersion.total}</span>
-                    <button type="button" aria-label="Next response version" title="Next response version" disabled={responseVersion.current >= responseVersion.total} onClick={() => onVersionChange?.(responseVersion.turnMessageId, responseVersion.current + 1)} className="rounded-full p-1 hover:bg-muted disabled:opacity-30"><ChevronRight className="size-3.5" /></button>
-                  </div>
-                )}
+                
               </BubbleContent>
             </Bubble>
             {!editing && <div className="mt-1 flex items-center gap-1 text-muted-foreground opacity-0 transition-opacity group-hover/user-message:opacity-100 group-focus-within/user-message:opacity-100 max-md:hidden">
               <button type="button" aria-label={promptCopied ? "Prompt copied" : "Copy prompt"} title={promptCopied ? "Copied" : "Copy prompt"} onClick={() => void copyPrompt()} className="rounded-lg p-1.5 hover:bg-muted hover:text-foreground">{promptCopied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}</button>
               <button type="button" aria-label="Share prompt" title="Share prompt" onClick={() => void sharePrompt()} className="rounded-lg p-1.5 hover:bg-muted hover:text-foreground"><Share2Icon className="size-3.5" /></button>
               <button type="button" aria-label="Edit message" title="Edit message" onClick={() => { setEditText(userText); setEditing(true) }} className="rounded-lg p-1.5 hover:bg-muted hover:text-foreground"><PencilIcon className="size-3.5" /></button>
+              {responseVersion && responseVersion.total > 1 && <button type="button" aria-label="Choose response version" title={`Response version ${responseVersion.current} of ${responseVersion.total}`} aria-expanded={versionSelectorOpen} onClick={() => setVersionSelectorOpen((open) => !open)} className={`rounded-lg p-1.5 hover:bg-muted hover:text-foreground ${versionSelectorOpen ? "bg-muted text-foreground" : ""}`}><HistoryIcon className="size-3.5" /></button>}
+            </div>}
+            {!editing && versionSelectorOpen && responseVersion && responseVersion.total > 1 && <div role="group" aria-label="Select response version" className="absolute bottom-full right-0 z-40 mb-2 flex items-center gap-1 rounded-xl border border-border/70 bg-popover p-1.5 text-xs text-popover-foreground shadow-xl">
+              <button type="button" aria-label="Previous response version" title="Previous response version" disabled={responseVersion.current <= 1} onClick={() => { onVersionChange?.(responseVersion.turnMessageId, responseVersion.current - 1); setVersionSelectorOpen(false) }} className="rounded-lg p-1.5 hover:bg-muted disabled:opacity-30"><ChevronLeft className="size-3.5" /></button>
+              <span className="min-w-10 text-center tabular-nums">{responseVersion.current}/{responseVersion.total}</span>
+              <button type="button" aria-label="Next response version" title="Next response version" disabled={responseVersion.current >= responseVersion.total} onClick={() => { onVersionChange?.(responseVersion.turnMessageId, responseVersion.current + 1); setVersionSelectorOpen(false) }} className="rounded-lg p-1.5 hover:bg-muted disabled:opacity-30"><ChevronRight className="size-3.5" /></button>
             </div>}
             {mobileActionsOpen && !editing && <div role="menu" aria-label="Prompt actions" className="absolute right-0 top-full z-30 mt-1 flex w-max max-w-[calc(100vw-2rem)] flex-wrap items-center gap-1.5 rounded-2xl border border-border/80 bg-popover p-2 text-popover-foreground shadow-xl md:hidden">
               <button type="button" role="menuitem" onClick={() => void copyPrompt()} className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs hover:bg-muted">{promptCopied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}{promptCopied ? "Copied" : "Copy"}</button>
               <button type="button" role="menuitem" onClick={() => { setEditText(userText); setEditing(true); setMobileActionsOpen(false) }} className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs hover:bg-muted"><PencilIcon className="size-3.5" />Edit</button>
               <button type="button" role="menuitem" onClick={() => void sharePrompt()} className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs hover:bg-muted"><Share2Icon className="size-3.5" />Share prompt</button>
+              {responseVersion && responseVersion.total > 1 && <button type="button" role="menuitem" onClick={() => setVersionSelectorOpen((open) => !open)} className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs hover:bg-muted"><HistoryIcon className="size-3.5" />Versions {responseVersion.current}/{responseVersion.total}</button>}
+              {versionSelectorOpen && responseVersion && responseVersion.total > 1 && <div role="group" aria-label="Select response version" className="flex items-center gap-1 rounded-lg border border-border px-1.5 py-1">
+                <button type="button" aria-label="Previous response version" disabled={responseVersion.current <= 1} onClick={() => { onVersionChange?.(responseVersion.turnMessageId, responseVersion.current - 1); setVersionSelectorOpen(false) }} className="rounded-md p-1.5 hover:bg-muted disabled:opacity-30"><ChevronLeft className="size-3.5" /></button>
+                <span className="min-w-8 text-center tabular-nums">{responseVersion.current}/{responseVersion.total}</span>
+                <button type="button" aria-label="Next response version" disabled={responseVersion.current >= responseVersion.total} onClick={() => { onVersionChange?.(responseVersion.turnMessageId, responseVersion.current + 1); setVersionSelectorOpen(false) }} className="rounded-md p-1.5 hover:bg-muted disabled:opacity-30"><ChevronRight className="size-3.5" /></button>
+              </div>}
               <button type="button" aria-label="Close prompt actions" onClick={() => setMobileActionsOpen(false)} className="rounded-lg p-2 hover:bg-muted"><XIcon className="size-3.5" /></button>
             </div>}
           </div>
