@@ -163,13 +163,14 @@ Never deploy to production, change DNS, alter production secrets, apply live Sup
 
 When documents conflict, preserve the user's current approved architecture and verify source before changing code. Update the owning document rather than creating competing plans.
 
-## Batch 2 follow-up — attachment UX, dismissal, and chat scrolling
+## Batch 2 final polish — streaming presentation and chat media UX
 
-**Merged baseline:** PR #36, commit `d9763d0c84b02984fab6006045b7815b46369404`. CI and Vercel status checks passed.  
-**Follow-up branch:** `fix/attachment-preview-dismissal-chat-streaming` (not merged; verification pending).
+**Merged Batch 2 follow-up:** PR #37, merge commit `85c1b76ceb427743e7ecebd3ad035fa0eccb1220`. The owner tested the merged behavior and reports that nearly all planned interactions work.
 
-The follow-up keeps all selected attachments visible in the composer until upload and processing succeeds, shows a minimal spinner instead of a separate pending chat bubble, preserves files for retry on failure, adds full-size image and supported document previews, and avoids auto-generating visible text for attachment-only messages. It also dismisses menus on outside tap/Escape, keeps password/logout inside settings, avoids reloading the active conversation, and improves auto-follow while preserving manual scrolling.
+**Open polish branch:** `fix/streaming-attachment-layout-message-selection` (not merged).
 
-No production deployment, DNS change, secret change, or live Supabase migration is part of this follow-up. Preserve the existing private buckets, owner checks, MIME and size limits, invite-only access, and native AI SDK streaming.
+The remaining work targets native AI SDK streaming presentation and explicit no-buffering response headers; lightweight Markdown/code rendering while tokens arrive; a responsive mixed attachment gallery with separate image/document preview dialogs; scroll-to-latest after history restoration and content layout changes; profile-photo preview before upload; native partial text selection; clearing selection after copy; copy-check feedback; and pinned-first sidebar headings.
 
-**Gate before Batch 3:** CI and preview pass; the owner retests attachments, menu dismissal, attachment-only send, conversation switching/refresh, collapsed sidebar, message actions, mobile/desktop behavior, and streaming scroll-follow. Update both this roadmap and `docs/IMPLEMENTATION_SPEC.md` with actual evidence before declaring Batch 2 accepted.
+Preserve private storage, owner checks, MIME and size limits, invite-only access, native AI SDK UI-message streaming, and all accepted auth/recovery behavior. No production deployment, DNS/secret change, paid infrastructure, or live Supabase migration is included.
+
+**Gate before Batch 3:** new branch CI passes, a preview is available and verified, and the owner retests streaming responsiveness, scroll pause/resume and restore-to-bottom, mixed attachment layouts and independent previews, avatar preview/save/cancel, message selection/copy feedback, and pinned/recent ordering. Update the ledger with actual evidence before declaring Batch 2 accepted.
