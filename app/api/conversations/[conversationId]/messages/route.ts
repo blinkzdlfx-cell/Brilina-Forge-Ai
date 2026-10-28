@@ -172,7 +172,7 @@ export async function POST(request: Request, context: RouteContext) {
         .eq("client_message_id", message.client_message_id)
         .maybeSingle()
       if (duplicate) {
-        existingByClientId.set(message.client_message_id, duplicate)
+        existingByClientId.set(message.client_message_id, duplicate as ExistingMessageRow)
         inserted = true
         continue
       }
