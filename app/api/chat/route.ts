@@ -15,7 +15,7 @@ import { getTools, type ChatUIMessage } from "@/tools"
 import { requireUser } from "@/lib/auth/require-user"
 import { getResumableStreamContext } from "@/lib/resumable-stream-context"
 
-export const maxDuration = 60
+export const maxDuration = 300
 
 // Keep the Free Worker request path bounded. Six recent messages preserve useful
 // context without repeatedly validating the entire client-side transcript.
@@ -326,7 +326,7 @@ export async function POST(req: Request) {
     stopWhen: isStepCount(MAX_TOOL_STEPS),
     maxOutputTokens: MAX_OUTPUT_TOKENS,
     maxRetries: 1,
-    timeout: { totalMs: 55_000, stepMs: 25_000 },
+    timeout: { totalMs: 270_000, stepMs: 90_000 },
     abortSignal: resumableContext && streamId ? generationAbortController.signal : req.signal,
     onChunk: ({ chunk }) => {
       // Record time-to-first-text without logging the generated content.
