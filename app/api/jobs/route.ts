@@ -115,7 +115,7 @@ export async function POST(request: Request) {
     await addEvent(admin, {
       job_id: job.id, user_id: auth.user.id, stage: "configuration", message, progress: 0,
     })
-    return Response.json({ error: message, jobId: job.id }, { status: 503 })
+    return Response.json({ error: message, jobId: job.id, userMessage: { id: userMessageId, role: "user", parts: [{ type: "text", text: prompt }] } }, { status: 503 })
   }
 
   try {
@@ -137,7 +137,7 @@ export async function POST(request: Request) {
     await addEvent(admin, {
       job_id: job.id, user_id: auth.user.id, stage: "dispatch", message, progress: 0,
     })
-    return Response.json({ error: message, jobId: job.id }, { status: 502 })
+    return Response.json({ error: message, jobId: job.id, userMessage: { id: userMessageId, role: "user", parts: [{ type: "text", text: prompt }] } }, { status: 502 })
   }
 
   await admin.from("background_jobs").update({
