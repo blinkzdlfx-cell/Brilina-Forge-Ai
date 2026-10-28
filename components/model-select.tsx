@@ -9,6 +9,7 @@ import {
   SelectGroup,
   SelectItem,
   SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select"
 
 export function ModelSelect({
@@ -49,9 +50,9 @@ export function ModelSelect({
       <SelectTrigger
         aria-label="Choose writing model"
         title="Choose writing model"
-        className="size-8 min-w-8 justify-center rounded-full border border-transparent bg-transparent p-0 shadow-none hover:bg-muted/70"
+        className="h-8 max-w-[min(48vw,13rem)] min-w-0 justify-between rounded-full border border-transparent bg-transparent px-3 py-0 text-xs font-medium shadow-none hover:bg-muted/70 sm:max-w-56 sm:text-sm"
       >
-        <span className="sr-only">Choose model</span>
+        <SelectValue placeholder="Choose model" />
       </SelectTrigger>
       <SelectContent alignItemWithTrigger={false}>
         <SelectGroup>
