@@ -43,13 +43,15 @@ const WELCOME_GREETINGS = {
   evening: ["Good evening", "What can we work through tonight?", "Ready when you are."],
 }
 
-function getWelcomeGreeting() {
+function getWelcomeGreeting(userName?: string | null) {
   const hour = new Date().getHours()
   const group = hour < 12 ? WELCOME_GREETINGS.morning : hour < 17 ? WELCOME_GREETINGS.afternoon : WELCOME_GREETINGS.evening
-  return group[Math.floor(Math.random() * group.length)]
+  const greeting = group[Math.floor(Math.random() * group.length)]
+  const firstName = userName?.trim().split(/\\s+/)[0]
+  return firstName && Math.random() < 0.35 ? `${greeting}, ${firstName}` : greeting
 }
 
-export function Chat({ models, initialConversationId = null }: { models: GatewayModel[]; initialConversationId?: string | null }) {
+export function Chat({ models, initialConversationId = null, userName }: { models: GatewayModel[]; initialConversationId?: string | null; userName?: string | null }) {
   React.useEffect(() => {
     const viewport = window.visualViewport
 
@@ -133,6 +135,9 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
     // Keep each conversation's UI state separate, including in-flight streams.
     id: conversationId ?? undefined,
     resume: Boolean(conversationId),
+    // Automatic tool continuations (including Ask Question answers) must use
+    // the same current model and conversation as ordinary user submissions.
+    body: { model, conversationId: conversationId ?? undefined },
     // Resume the conversation automatically once the user has answered the
     // ask_user questionnaire.
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
@@ -676,7 +681,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
             <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-6">
               <Empty>
                 <EmptyHeader>
-                  <EmptyTitle>{getWelcomeGreeting()}</EmptyTitle>
+                  <EmptyTitle>{getWelcomeGreeting(userName)}</EmptyTitle>
                   <EmptyDescription>
                     Ask a question, explore an idea, or start building something.
                   </EmptyDescription>
