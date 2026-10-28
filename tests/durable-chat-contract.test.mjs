@@ -49,19 +49,35 @@ test("recording and attachment selection stay available while a response is acti
   assert.doesNotMatch(promptForm, /aria-label="Record voice message"[^\n]*disabled=\{isBusy/)
 })
 
-test("collapsed sidebar shows only Recent and header separates model control from chat actions", async () => {
-  const [sidebar, header, modelSelect] = await Promise.all([
+test("collapsed sidebar exposes the four requested actions and model labels omit providers", async () => {
+  const [sidebar, header, modelSelect, models] = await Promise.all([
     read("components/chat-sidebar.tsx"),
     read("components/chat-header-controls.tsx"),
     read("components/model-select.tsx"),
+    read("lib/models.ts"),
   ])
   assert.match(sidebar, /aria-label="Recent conversations" title="Recent conversations"/)
-  assert.doesNotMatch(sidebar, /aria-label="Search conversations" title="Search"/)
-  assert.doesNotMatch(sidebar, /aria-label="Pinned conversations" title="Pinned"/)
-  assert.match(sidebar, /MessagesSquareIcon/)
-  assert.match(header, /BRILINAFORGE/)
+  assert.match(sidebar, /aria-label="Search conversations" title="Search conversations"/)
+  assert.match(sidebar, /aria-label="Pinned conversations" title="Pinned conversations"/)
+  assert.match(sidebar, /aria-label="New chat" title="New chat"/)
+  assert.match(sidebar, /<MessagesSquareIcon className="size-4" \/>/)
+  assert.doesNotMatch(header, /BRILINAFORGE/)
   assert.match(header, /<ModelSelect models=\{models\} value=\{model\} onValueChange=\{onModelChange\} \/>/)
-  assert.match(header, /rounded-full border border-border\/70 bg-background\/85/)
-  assert.doesNotMatch(modelSelect, />Writing model</)
-  assert.match(modelSelect, /<span className="sr-only">Choose model<\/span>/)
+  assert.match(modelSelect, /<SelectValue placeholder="Choose model" \/>/)
+  assert.doesNotMatch(models, /\(Cloudflare\)|\(Groq\)/)
+  assert.doesNotMatch(sidebar, /Preview full photo/)
+  assert.match(sidebar, /className="z-\[110\]"/)
+})
+
+test("new-chat submissions use the latest chat instance and initial loading cannot overwrite a later selection", async () => {
+  const chat = await read("components/chat.tsx")
+  assert.match(chat, /const sendMessageRef = React\.useRef\(sendMessage\)/)
+  assert.match(chat, /sendMessageRef\.current\(\{ text \}/)
+  assert.match(chat, /conversationIdRef\.current !== initialConversationId/)
+})
+
+test("long AI responses use Vercel Fluid Compute duration", async () => {
+  const route = await read("app/api/chat/route.ts")
+  assert.match(route, /export const maxDuration = 300/)
+  assert.match(route, /timeout: \{ totalMs: 270_000, stepMs: 90_000 \}/)
 })
