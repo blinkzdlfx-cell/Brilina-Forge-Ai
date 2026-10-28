@@ -502,14 +502,16 @@ export async function POST(req: Request) {
                 // The client may have persisted a partial row with this ID just
                 // before onFinish. Upgrade that row to the final server result.
                 const { data: duplicateAssistant, error: duplicateLookupError } = await auth.supabase.from("messages")
-                  .select("id").eq("conversation_id", conversationId)
+                  .select("id, version_number, turn_message_id").eq("conversation_id", conversationId)
                   .eq("client_message_id", responseMessage.id).maybeSingle()
                 if (!duplicateLookupError && duplicateAssistant) {
                   const { error: finalUpdateError } = await auth.supabase.from("messages").update({
                     parts: responseMessage.parts,
                     status: isAborted ? "interrupted" : "complete",
                     turn_message_id: turnMessageId,
-                    version_number: nextVersion,
+                    version_number: duplicateAssistant.turn_message_id === turnMessageId
+                      ? Number(duplicateAssistant.version_number ?? nextVersion)
+                      : nextVersion,
                     is_active_version: true,
                   }).eq("id", duplicateAssistant.id).eq("conversation_id", conversationId)
                   if (finalUpdateError) logChatDiagnostic(requestId, "assistant_final_update_failed", { elapsedMs: elapsed() })
