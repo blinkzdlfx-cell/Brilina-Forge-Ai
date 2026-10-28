@@ -139,9 +139,6 @@ export function Chat({ models, initialConversationId = null, userName }: { model
     // Keep each conversation's UI state separate, including in-flight streams.
     id: conversationId ?? undefined,
     resume: Boolean(conversationId),
-    // Automatic tool continuations (including Ask Question answers) must use
-    // the same current model and conversation as ordinary user submissions.
-    body: { model, conversationId: conversationId ?? undefined },
     // Resume the conversation automatically once the user has answered the
     // ask_user questionnaire.
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
