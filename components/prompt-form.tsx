@@ -398,7 +398,7 @@ export function PromptForm({
   }
 
   async function startRecording() {
-    if (isBusy || voiceState === "transcribing" || voiceState === "recording") return
+    if (voiceState === "transcribing" || voiceState === "recording") return
     intentRef.current = "insert"
     recordingSessionRef.current = null
     setVoiceError("")
@@ -727,7 +727,7 @@ export function PromptForm({
               <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/webp" multiple className="hidden" onChange={handleImageSelection} />
               <input ref={documentInputRef} type="file" accept=".txt,.md,.csv,.json,.html,.htm,.pdf,.docx,text/plain,text/markdown,text/csv,application/json,text/html,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple className="hidden" onChange={handleImageSelection} />
               <div ref={attachmentMenuRef} className="relative">
-                <InputGroupButton type="button" size="icon-sm" variant="outline" aria-label="Add attachment" title="Add attachment" disabled={isBusy || isPreparingAttachments || isSubmitting} aria-haspopup="menu" aria-expanded={attachmentMenuOpen} onClick={() => setAttachmentMenuOpen((open) => !open)}>
+                <InputGroupButton type="button" size="icon-sm" variant="outline" aria-label="Add attachment" title="Add attachment" disabled={isPreparingAttachments || isSubmitting} aria-haspopup="menu" aria-expanded={attachmentMenuOpen} onClick={() => setAttachmentMenuOpen((open) => !open)}>
                   <PlusIcon />
                 </InputGroupButton>
                 {attachmentMenuOpen && <div role="menu" aria-label="Add attachment" className="absolute bottom-full left-0 z-50 mb-2 min-w-44 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl">
@@ -771,7 +771,7 @@ export function PromptForm({
                 variant="outline"
                 aria-label="Record voice message"
                 title="Record voice message"
-                disabled={isBusy || isPreparingAttachments || isSubmitting}
+                disabled={isPreparingAttachments || isSubmitting}
                 onClick={() => void startRecording()}
               >
                 <MicIcon />
