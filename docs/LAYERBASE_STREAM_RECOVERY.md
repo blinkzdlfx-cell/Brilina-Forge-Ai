@@ -45,3 +45,7 @@ Use the native TLS Redis connection string for stream recovery. The Layerbase Up
 - Supabase owns the durable conversation transcript, user/assistant messages, response versions, active stream reference, and explicit-stop status.
 - A stopped or completed stream should clear its active stream reference in Supabase. Redis should hold only transient replay state.
 - Before declaring the feature production-ready, test refresh during a response, switch conversations during a response, stop a response, reopen a conversation, and regenerate/select response versions.
+
+## Chat navigation UI
+
+The collapsed sidebar intentionally exposes only the Recent conversations shortcut; search and pinned navigation are available when the sidebar is expanded. The header keeps the BRILINAFORGE label and icon-only model dropdown separate from the New chat and More actions controls.
