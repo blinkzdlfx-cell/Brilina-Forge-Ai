@@ -311,15 +311,8 @@ export async function POST(req: Request) {
         inputTokens: totalUsage.inputTokens ?? null,
         outputTokens: totalUsage.outputTokens ?? null,
       })
-      if (cancellationPoll) clearInterval(cancellationPoll)
-      cancellationPoll = null
-      if (conversationId && streamId && resumableContext) {
-        await auth.supabase.from("conversations").update({
-          active_stream_id: null,
-          active_generation_status: generationAbortController.signal.aborted ? "stopped" : "completed",
-          active_assistant_message_id: null,
-        }).eq("id", conversationId).eq("user_id", auth.user.id).eq("active_stream_id", streamId)
-      }
+      // The UI-message stream finish handler persists the final assistant message
+      // before clearing the active stream reference.
     },
     onAbort: async ({ steps }) => {
       logChatDiagnostic(requestId, "generation_aborted", {
@@ -381,6 +374,48 @@ export async function POST(req: Request) {
           ...errorDetails(error),
         })
         return "Something went wrong. Please try again."
+      },
+      onFinish: async ({ responseMessage, isAborted }) => {
+        if (conversationId && conversationIdIsValid && responseMessage.role === "assistant") {
+          const { data: existing, error: existingError } = await auth.supabase
+            .from("messages")
+            .select("id")
+            .eq("conversation_id", conversationId)
+            .eq("client_message_id", responseMessage.id)
+            .maybeSingle()
+          if (!existingError) {
+            if (existing) {
+              await auth.supabase.from("messages").update({
+                parts: responseMessage.parts,
+                status: isAborted ? "interrupted" : "complete",
+              }).eq("id", existing.id).eq("conversation_id", conversationId)
+            } else {
+              const { data: latest } = await auth.supabase.from("messages")
+                .select("sequence_number")
+                .eq("conversation_id", conversationId)
+                .order("sequence_number", { ascending: false })
+                .limit(1)
+              await auth.supabase.from("messages").insert({
+                id: crypto.randomUUID(),
+                conversation_id: conversationId,
+                role: "assistant",
+                parts: responseMessage.parts,
+                sequence_number: Number(latest?.[0]?.sequence_number ?? -1) + 1,
+                status: isAborted ? "interrupted" : "complete",
+                client_message_id: responseMessage.id,
+              })
+            }
+          }
+        }
+        if (cancellationPoll) clearInterval(cancellationPoll)
+        cancellationPoll = null
+        if (conversationId && streamId && resumableContext) {
+          await auth.supabase.from("conversations").update({
+            active_stream_id: null,
+            active_generation_status: isAborted ? "stopped" : "completed",
+            active_assistant_message_id: responseMessage.id,
+          }).eq("id", conversationId).eq("user_id", auth.user.id).eq("active_stream_id", streamId)
+        }
       },
     }),
     consumeSseStream: resumableContext && streamId
