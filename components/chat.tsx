@@ -104,6 +104,8 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
   // outlive the render that started it, so always submit through the latest instance.
   const sendMessageRef = React.useRef(sendMessage)
   sendMessageRef.current = sendMessage
+  const setMessagesRef = React.useRef(setMessages)
+  setMessagesRef.current = setMessages
   // Do not write a restored history snapshot back as if it were a newly
   // completed response. Only persist after a local send, regeneration, or tool reply.
   const shouldPersistMessagesRef = React.useRef(false)
@@ -311,7 +313,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
       const payload = await response.json() as { messages?: ChatMessageType[] }
       if (!response.ok || !payload.messages) throw new Error("Could not load this conversation.")
       window.history.replaceState(null, "", "/c/" + encodeURIComponent(id))
-      setMessages(payload.messages)
+      setMessagesRef.current(payload.messages)
       setConversationNotice("")
       setConversationLoading(false)
     } catch (cause) { setConversationNotice(cause instanceof Error ? cause.message : "Could not load this conversation."); setConversationLoading(false) }
@@ -326,7 +328,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
       if (cancelled || conversationIdRef.current !== initialConversationId) return
       shouldAutoFollowRef.current = true
       forceScrollToLatestRef.current = true
-      setMessages(payload.messages)
+      setMessagesRef.current(payload.messages)
       setConversationLoading(false)
     }).catch((cause) => { if (!cancelled) { setConversationNotice(cause instanceof Error ? cause.message : "Could not load this conversation."); setConversationLoading(false) } })
     return () => { cancelled = true }
@@ -372,7 +374,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
               const version = message.responseVersion
               return message.id + ":" + (version ? version.current + "/" + version.total : "")
             }).join("|")
-            if (currentKey !== storedKey) setMessages(history.messages)
+            if (conversationIdRef.current === conversationId && currentKey !== storedKey) setMessagesRef.current(history.messages)
           }
           shouldPersistMessagesRef.current = false
         }
@@ -446,10 +448,11 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
     const history = await fetch("/api/conversations/" + encodeURIComponent(id))
     const payload = await history.json() as { messages?: ChatMessageType[] }
     if (history.ok && payload.messages) {
-      setMessages(payload.messages)
+      if (conversationIdRef.current !== id) return
+      setMessagesRef.current(payload.messages)
       setConversationNotice("")
     }
-  }, [setMessages])
+  }, [])
 
   const updateConversation = React.useCallback(async (id: string, patch: Record<string, unknown>) => {
     const response = await fetch("/api/conversations/" + encodeURIComponent(id), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) })
@@ -550,7 +553,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
                                 return
                               }
                             }
-                            setMessages((current) => current.slice(0, current.findIndex((item) => item.id === message.id)))
+                            setMessagesRef.current((current) => current.slice(0, current.findIndex((item) => item.id === message.id)))
                             window.setTimeout(() => void handleSendMessage(editedText), 0)
                           })()
                         }}
