@@ -345,7 +345,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
         ? firstUserFile.filename ?? "Attachment chat"
         : "New chat"
   const activeConversationTitle = conversationId
-    ? conversations.find((item) => item.id === conversationId)?.title ?? conversationTitle
+    ? conversations.find((item) => item.id === conversationId)?.title ?? "New chat"
     : "Brilina Forge AI"
 
   React.useEffect(() => {
