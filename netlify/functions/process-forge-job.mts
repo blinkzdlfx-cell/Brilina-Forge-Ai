@@ -11,7 +11,7 @@ type JobRecord = {
   status: string
   progress: number
   stage: string
-  input: { prompt?: string; model?: string }
+  input: { prompt?: string; model?: string; userMessageId?: string }
   attempt: number
   max_attempts: number
   updated_at: string
