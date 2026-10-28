@@ -67,6 +67,18 @@ export default async function processForgeJob(request: Request) {
     // A retry may arrive while the first invocation is already running.
     return new Response(null, { status: 202 })
   }
+  if (job.attempt >= job.max_attempts) {
+    await admin.from("background_jobs").update({ status: "failed", stage: "retry_limit", progress_message: "The task reached its retry limit.", error_code: "retry_limit", error_message: "The task reached its retry limit.", completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", job.id)
+    await admin.from("background_job_events").insert({ job_id: job.id, user_id: job.user_id, stage: "retry_limit", message: "The task reached its retry limit.", progress: job.progress, details: {} })
+    return new Response(null, { status: 202 })
+  }
+  // Claim with an optimistic compare-and-swap so duplicate Netlify retries
+  // cannot run the same job concurrently.
+  const { data: claimed, error: claimError } = await admin.from("background_jobs").update({
+    status: "running", stage: "starting", progress_message: "Claimed by the background worker.",
+    attempt: job.attempt + 1, started_at: job.started_at ?? new Date().toISOString(), updated_at: new Date().toISOString(),
+  }).eq("id", job.id).eq("status", job.status).eq("updated_at", job.updated_at).select("id").maybeSingle()
+  if (claimError || !claimed) return new Response(null, { status: 202 })
 
   const updateProgress = async (progress: number, stage: string, message: string, details: Record<string, unknown> = {}) => {
     await admin.from("background_jobs").update({
