@@ -28,6 +28,10 @@ create index if not exists background_jobs_user_created_idx
 create index if not exists background_jobs_status_updated_idx
   on public.background_jobs (status, updated_at);
 
+create index if not exists background_jobs_conversation_created_idx
+  on public.background_jobs (conversation_id, user_id, created_at desc)
+  where conversation_id is not null;
+
 create table if not exists public.background_job_events (
   id bigint generated always as identity primary key,
   job_id uuid not null references public.background_jobs(id) on delete cascade,
@@ -41,6 +45,9 @@ create table if not exists public.background_job_events (
 
 create index if not exists background_job_events_job_id_idx
   on public.background_job_events (job_id, id);
+
+create index if not exists background_job_events_user_job_idx
+  on public.background_job_events (user_id, job_id, id);
 
 alter table public.background_jobs enable row level security;
 alter table public.background_job_events enable row level security;
