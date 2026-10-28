@@ -49,11 +49,15 @@ export function ChatHeaderControls({ onNewChat, models, model, onModelChange, ac
   const menuItem = (label: string, icon: React.ReactNode, onClick: () => void, destructive = false) => <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onClick() }} className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-muted ${destructive ? "text-destructive hover:bg-destructive/10" : ""}`}>{icon}{label}</button>
 
   return <>
-    <div ref={menuRef} className="relative flex w-full min-w-0 max-w-full items-center gap-0.5 overflow-visible rounded-full border border-border/70 bg-background/85 p-1 shadow-lg backdrop-blur-xl dark:bg-zinc-900/80 sm:w-auto sm:max-w-none sm:gap-1">
-      <span className="shrink-0 whitespace-nowrap px-1 text-[9px] font-semibold tracking-wide sm:px-2 sm:text-[10px]">BRILINAFORGE</span>
-      <div className="w-0 min-w-0 flex-1 sm:w-36 sm:flex-none sm:max-w-44"><ModelSelect models={models} value={model} onValueChange={onModelChange} /></div>
-      <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full hover:bg-muted dark:hover:bg-white/10 sm:size-9" onClick={onNewChat} aria-label="New chat" title="New chat"><SquarePen className="size-4" /></Button>
-      <Button ref={menuTriggerRef} type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full hover:bg-muted dark:hover:bg-white/10 sm:size-9" onClick={() => setMenuOpen((open) => !open)} aria-label="More options" title="More options" aria-haspopup="menu" aria-expanded={menuOpen}><Ellipsis className="size-4" /></Button>
+    <div ref={menuRef} className="relative flex w-full min-w-0 max-w-full items-center justify-end gap-2 overflow-visible sm:w-auto sm:max-w-none">
+      <div className="flex min-w-0 items-center gap-0.5 rounded-full border border-border/70 bg-background/85 p-1 shadow-lg backdrop-blur-xl dark:bg-zinc-900/80">
+        <span className="shrink-0 whitespace-nowrap px-2 text-[9px] font-semibold tracking-wide sm:text-[10px]">BRILINAFORGE</span>
+        <div className="w-8 shrink-0"><ModelSelect models={models} value={model} onValueChange={onModelChange} /></div>
+      </div>
+      <div className="flex shrink-0 items-center gap-0.5 rounded-full border border-border/70 bg-background/85 p-1 shadow-lg backdrop-blur-xl dark:bg-zinc-900/80">
+        <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full hover:bg-muted dark:hover:bg-white/10 sm:size-9" onClick={onNewChat} aria-label="New chat" title="New chat"><SquarePen className="size-4" /></Button>
+        <Button ref={menuTriggerRef} type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full hover:bg-muted dark:hover:bg-white/10 sm:size-9" onClick={() => setMenuOpen((open) => !open)} aria-label="More options" title="More options" aria-haspopup="menu" aria-expanded={menuOpen}><Ellipsis className="size-4" /></Button>
+      </div>
       {menuOpen && <div ref={menuPopupRef} role="menu" aria-label="More options" className="absolute right-0 top-full z-50 mt-2 min-w-48 rounded-2xl border border-border/70 bg-popover/95 p-2 shadow-xl backdrop-blur-xl">
         {activeConversation && <>
           {menuItem("Rename", <SquarePen className="size-4" />, () => { setTitle(activeConversation.title); setModal("rename") })}
