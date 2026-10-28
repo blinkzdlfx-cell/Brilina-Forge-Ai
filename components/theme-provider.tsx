@@ -44,7 +44,16 @@ function ThemeHotkey() {
       return await response.json() as { preferences?: { theme?: string } }
     }).then((payload) => {
       const theme = payload?.preferences?.theme
-      if (active && (theme === "system" || theme === "light" || theme === "dark")) setTheme(theme)
+      // next-themes writes a deliberate local selection synchronously. Do not let
+      // this initial async profile fetch overwrite a newer choice made in the UI.
+      let hasLocalChoice = false
+      try {
+        const storedTheme = window.localStorage.getItem("theme")
+        hasLocalChoice = storedTheme === "system" || storedTheme === "light" || storedTheme === "dark"
+      } catch {
+        // If storage is unavailable, the saved server preference remains the fallback.
+      }
+      if (active && !hasLocalChoice && (theme === "system" || theme === "light" || theme === "dark")) setTheme(theme)
     }).catch(() => undefined)
     return () => { active = false }
   }, [setTheme])

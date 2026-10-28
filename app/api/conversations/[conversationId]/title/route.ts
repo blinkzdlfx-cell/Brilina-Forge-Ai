@@ -1,7 +1,7 @@
 import { generateText } from "ai"
 
 import { requireUser } from "@/lib/auth/require-user"
-import { CLOUDFLARE_MODEL_ID, getLanguageModel } from "@/lib/models"
+import { CLOUDFLARE_TITLE_MODEL_ID, getLanguageModel } from "@/lib/models"
 
 type RouteContext = { params: Promise<{ conversationId: string }> }
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -80,7 +80,7 @@ export async function POST(_request: Request, context: RouteContext) {
 
   try {
     const result = await generateText({
-      model: getLanguageModel(CLOUDFLARE_MODEL_ID),
+      model: getLanguageModel(CLOUDFLARE_TITLE_MODEL_ID),
       system: "Create a concise, specific title for this AI conversation. Use 3–7 words, no quotes, no prefix, and no ending punctuation. Describe the user's actual goal. Do not answer the request.",
       prompt: "First user message:\n" + userPrompt + "\n\nFirst assistant response:\n" + assistantReply,
       maxOutputTokens: 40,
