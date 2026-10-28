@@ -15,6 +15,20 @@ async function addEvent(admin: ReturnType<typeof createAdminClient>, event: {
   })
 }
 
+export async function GET(request: Request) {
+  const auth = await requireUser()
+  if (!auth.ok) return auth.response
+  const conversationId = new URL(request.url).searchParams.get("conversationId")
+  if (!conversationId || !UUID_PATTERN.test(conversationId)) return Response.json({ job: null })
+  const admin = createAdminClient()
+  const { data: job, error } = await admin.from("background_jobs")
+    .select("id,status,progress,stage,progress_message,updated_at")
+    .eq("conversation_id", conversationId).eq("user_id", auth.user.id)
+    .in("status", ["queued", "running"]).order("created_at", { ascending: false }).limit(1).maybeSingle()
+  if (error) return Response.json({ error: "jobs_unavailable" }, { status: 500 })
+  return Response.json({ job: job ?? null })
+}
+
 export async function POST(request: Request) {
   const auth = await requireUser()
   if (!auth.ok) return auth.response
