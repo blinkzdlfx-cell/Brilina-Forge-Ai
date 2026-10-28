@@ -255,19 +255,31 @@ export async function POST(req: Request) {
     // cannot be sequenced ahead of its prompt.
     const lastRawMessage = rawMessages.at(-1) as { id?: unknown; role?: unknown; parts?: unknown } | undefined
     if (lastRawMessage?.role === "user" && typeof lastRawMessage.id === "string" && Array.isArray(lastRawMessage.parts)) {
-      const { data: existingUserMessage } = await auth.supabase.from("messages")
+      const { data: existingUserMessage, error: existingUserError } = await auth.supabase.from("messages")
         .select("id").eq("conversation_id", conversationId)
         .eq("client_message_id", lastRawMessage.id).maybeSingle()
+      if (existingUserError) {
+        logChatDiagnostic(requestId, "user_message_lookup_failed", { elapsedMs: elapsed() })
+        return jsonError(requestId, "Could not save the user message. Please retry.", 503)
+      }
       if (existingUserMessage) {
-        await auth.supabase.from("messages").update({
+        const { error: updateUserError } = await auth.supabase.from("messages").update({
           parts: lastRawMessage.parts,
           status: "complete",
         }).eq("id", existingUserMessage.id).eq("conversation_id", conversationId)
+        if (updateUserError) {
+          logChatDiagnostic(requestId, "user_message_update_failed", { elapsedMs: elapsed() })
+          return jsonError(requestId, "Could not save the user message. Please retry.", 503)
+        }
       } else {
-        const { data: latest } = await auth.supabase.from("messages")
+        const { data: latest, error: latestError } = await auth.supabase.from("messages")
           .select("sequence_number").eq("conversation_id", conversationId)
           .order("sequence_number", { ascending: false }).limit(1)
-        await auth.supabase.from("messages").insert({
+        if (latestError) {
+          logChatDiagnostic(requestId, "user_message_sequence_lookup_failed", { elapsedMs: elapsed() })
+          return jsonError(requestId, "Could not save the user message. Please retry.", 503)
+        }
+        const { error: insertUserError } = await auth.supabase.from("messages").insert({
           id: crypto.randomUUID(),
           conversation_id: conversationId,
           role: "user",
@@ -276,6 +288,33 @@ export async function POST(req: Request) {
           status: "complete",
           client_message_id: lastRawMessage.id,
         })
+        if (insertUserError) {
+          // The browser's periodic persistence can race this initial insert.
+          // Treat an existing row for the same stable client ID as idempotent.
+          if (insertUserError.code === "23505") {
+            const { data: duplicate, error: duplicateError } = await auth.supabase.from("messages")
+              .select("id").eq("conversation_id", conversationId)
+              .eq("client_message_id", lastRawMessage.id).maybeSingle()
+            if (!duplicateError && duplicate) {
+              const { error: duplicateUpdateError } = await auth.supabase.from("messages").update({
+                parts: lastRawMessage.parts,
+                status: "complete",
+              }).eq("id", duplicate.id).eq("conversation_id", conversationId)
+              if (!duplicateUpdateError) {
+                // Another writer already persisted this user turn.
+              } else {
+                logChatDiagnostic(requestId, "duplicate_user_message_update_failed", { elapsedMs: elapsed() })
+                return jsonError(requestId, "Could not save the user message. Please retry.", 503)
+              }
+            } else {
+              logChatDiagnostic(requestId, "user_message_insert_conflict", { elapsedMs: elapsed() })
+              return jsonError(requestId, "Could not save the user message. Please retry.", 503)
+            }
+          } else {
+            logChatDiagnostic(requestId, "user_message_insert_failed", { elapsedMs: elapsed() })
+            return jsonError(requestId, "Could not save the user message. Please retry.", 503)
+          }
+        }
       }
     }
 
@@ -446,7 +485,7 @@ export async function POST(req: Request) {
                 .eq("conversation_id", conversationId)
                 .order("sequence_number", { ascending: false })
                 .limit(1)
-              await auth.supabase.from("messages").insert({
+              const assistantRow = {
                 id: crypto.randomUUID(),
                 conversation_id: conversationId,
                 role: "assistant",
@@ -457,7 +496,29 @@ export async function POST(req: Request) {
                 turn_message_id: turnMessageId,
                 version_number: nextVersion,
                 is_active_version: true,
-              })
+              }
+              const { error: assistantInsertError } = await auth.supabase.from("messages").insert(assistantRow)
+              if (assistantInsertError?.code === "23505") {
+                // The client may have persisted a partial row with this ID just
+                // before onFinish. Upgrade that row to the final server result.
+                const { data: duplicateAssistant, error: duplicateLookupError } = await auth.supabase.from("messages")
+                  .select("id").eq("conversation_id", conversationId)
+                  .eq("client_message_id", responseMessage.id).maybeSingle()
+                if (!duplicateLookupError && duplicateAssistant) {
+                  const { error: finalUpdateError } = await auth.supabase.from("messages").update({
+                    parts: responseMessage.parts,
+                    status: isAborted ? "interrupted" : "complete",
+                    turn_message_id: turnMessageId,
+                    version_number: nextVersion,
+                    is_active_version: true,
+                  }).eq("id", duplicateAssistant.id).eq("conversation_id", conversationId)
+                  if (finalUpdateError) logChatDiagnostic(requestId, "assistant_final_update_failed", { elapsedMs: elapsed() })
+                } else {
+                  logChatDiagnostic(requestId, "assistant_insert_conflict", { elapsedMs: elapsed() })
+                }
+              } else if (assistantInsertError) {
+                logChatDiagnostic(requestId, "assistant_insert_failed", { elapsedMs: elapsed() })
+              }
             }
           }
         }
