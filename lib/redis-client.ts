@@ -16,7 +16,7 @@ export function createRedisClient() {
   return createClient({
     url,
     ...(parsed.protocol === "rediss:"
-      ? { socket: { servername: parsed.hostname } }
+      ? { socket: { tls: true, servername: parsed.hostname } }
       : {}),
   })
 }
