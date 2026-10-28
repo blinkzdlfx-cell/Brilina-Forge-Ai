@@ -311,11 +311,11 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
     if (!initialConversationId) return
     let cancelled = false
     conversationIdRef.current = initialConversationId
-    setConversationId(initialConversationId)
     fetch("/api/conversations/" + encodeURIComponent(initialConversationId)).then(async (response) => {
       const payload = await response.json() as { messages?: ChatMessageType[] }
       if (!response.ok || !payload.messages) throw new Error("Could not load this conversation.")
       if (cancelled) return
+      setConversationId(initialConversationId)
       shouldAutoFollowRef.current = true
       forceScrollToLatestRef.current = true
       setMessages(payload.messages)
@@ -366,7 +366,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
       }).catch(() => undefined)
     }, status === "ready" ? 300 : 1000)
     return () => { clearTimeout(timer); controller.abort() }
-  }, [status, conversationId, messages, error, refreshConversations])
+  }, [status, conversationId, messages, error, refreshConversations, setMessages])
   React.useEffect(() => {
     const viewport = messageViewportRef.current
     if (!viewport) return
