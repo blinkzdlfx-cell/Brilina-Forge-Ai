@@ -93,6 +93,9 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
     error,
     addToolOutput,
   } = useChat<ChatUIMessage>({
+    // Keep each conversation's UI state separate, including in-flight streams.
+    id: conversationId ?? undefined,
+    resume: Boolean(conversationId),
     // Resume the conversation automatically once the user has answered the
     // ask_user questionnaire.
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
@@ -228,12 +231,12 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
             ...uploadedAttachments.map((file) => ({ type: "file" as const, url: "/api/files/" + encodeURIComponent(file.id) + "/view", mediaType: file.mimeType, filename: file.name })),
           ]
           submissionQueued = true
-          void sendMessage({ parts: visibleParts } as ChatUIMessage, { body: { model: resolvedModel } })
+          void sendMessage({ parts: visibleParts } as ChatUIMessage, { body: { model: resolvedModel, conversationId: targetId } })
           return true
         }
 
         submissionQueued = true
-        void sendMessage({ text }, { body: { model: resolvedModel } })
+        void sendMessage({ text }, { body: { model: resolvedModel, conversationId: targetId } })
         return true
       } finally {
         sendPreparationRef.current = false
@@ -278,7 +281,6 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
       : undefined
 
   const startNewChat = React.useCallback(() => {
-    if (isBusy) stop()
     conversationIdRef.current = null
     setConversationId(null)
     window.history.replaceState(null, "", "/")
@@ -288,10 +290,9 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
     setMessages([])
     setConversationNotice("")
     setAttachmentError("")
-  }, [isBusy, setMessages, stop])
+  }, [setMessages])
   const openConversation = React.useCallback(async (id: string) => {
     if (conversationIdRef.current === id && !conversationLoading) return
-    if (isBusy) stop()
     shouldAutoFollowRef.current = true
     forceScrollToLatestRef.current = true
     setConversationLoading(true)
@@ -306,7 +307,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
       setConversationNotice("")
       setConversationLoading(false)
     } catch (cause) { setConversationNotice(cause instanceof Error ? cause.message : "Could not load this conversation."); setConversationLoading(false) }
-  }, [conversationLoading, isBusy, setMessages, stop])
+  }, [conversationLoading, setMessages])
   React.useEffect(() => {
     if (!initialConversationId) return
     let cancelled = false
@@ -388,6 +389,18 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
     observer.observe(content)
     return () => observer.disconnect()
   }, [conversationLoading, messages.length])
+
+  const handleStopGeneration = React.useCallback(async () => {
+    const id = conversationIdRef.current
+    if (id) {
+      await fetch("/api/chat/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId: id }),
+      }).catch(() => undefined)
+    }
+    stop()
+  }, [stop])
 
   const updateConversation = React.useCallback(async (id: string, patch: Record<string, unknown>) => {
     const response = await fetch("/api/conversations/" + encodeURIComponent(id), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) })
@@ -540,7 +553,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
               canAttachImages={maxNewImages > 0}
               maxImages={maxNewImages}
               onSubmit={handleSendMessage}
-              onStop={() => stop()}
+              onStop={handleStopGeneration}
               onComposerFocus={() =>
                 setCollapseExpandedMessagesKey((key) => key + 1)
               }
