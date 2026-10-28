@@ -66,7 +66,6 @@ export const ACTIVITY_MESSAGES = [
   "Completing the response…",
   "Getting the result ready…",
   "Putting the final pieces in place…",
-  "Ready to share the result shortly…",
 ] as const
 
 export function ActivityStatus({ label = "Thinking" }: { label?: string }) {
