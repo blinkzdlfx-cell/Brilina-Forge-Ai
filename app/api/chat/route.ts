@@ -235,7 +235,11 @@ export async function POST(req: Request) {
     return jsonError(requestId, "Could not prepare the conversation for the AI provider.", 500)
   }
 
-  if (conversationIdIsValid && conversationId) {
+  // Normal chat responses must not depend on Layerbase Redis. Resumable streams
+  // are opt-in for future long-running flows; the current background-job path
+  // uses durable Supabase job state and does not set this flag.
+  const useResumableStream = (body as { useResumableStream?: unknown }).useResumableStream === true
+  if (conversationIdIsValid && conversationId && useResumableStream) {
     resumableContext = await getResumableStreamContext()
     if (resumableContext) streamId = crypto.randomUUID()
     else logChatDiagnostic(requestId, "stream_recovery_unavailable", { elapsedMs: elapsed() })
