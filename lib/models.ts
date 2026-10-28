@@ -30,7 +30,7 @@ type ModelDefinition = GatewayModel & {
 const MODEL_DEFINITIONS: ModelDefinition[] = [
   {
     id: CLOUDFLARE_MODEL_ID,
-    name: "GLM 4.7 Flash (Cloudflare)",
+    name: "GLM 4.7 Flash",
     capabilities: ["text"],
     maxImages: 0,
     provider: "cloudflare",
@@ -38,7 +38,7 @@ const MODEL_DEFINITIONS: ModelDefinition[] = [
   },
   {
     id: CLOUDFLARE_VISION_MODEL_ID,
-    name: "Qwen 3.8 27B Vision (Cloudflare)",
+    name: "Qwen 3.8 27B Vision",
     capabilities: ["text", "vision"],
     maxImages: 1,
     provider: "cloudflare",
@@ -46,7 +46,7 @@ const MODEL_DEFINITIONS: ModelDefinition[] = [
   },
   {
     id: GROQ_VISION_MODEL_ID,
-    name: "Qwen 3.8 27B Vision (Groq)",
+    name: "Qwen 3.8 27B Vision",
     capabilities: ["text", "vision"],
     maxImages: 3,
     provider: "groq",
@@ -54,7 +54,7 @@ const MODEL_DEFINITIONS: ModelDefinition[] = [
   },
   {
     id: GROQ_SECONDARY_VISION_MODEL_ID,
-    name: "Muse Spark Vision (Groq preview)",
+    name: "Muse Spark Vision",
     capabilities: ["text", "vision"],
     maxImages: 3,
     provider: "groq",

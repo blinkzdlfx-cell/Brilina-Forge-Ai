@@ -53,10 +53,6 @@ jobs:
       - name: Cloudflare Worker build
         run: pnpm build:worker
 
-      # Keep the existing portable Node container proof available for comparison.
-      - name: Cloud Run container build
-        run: docker build --tag brilina-forge-ai:ci .
-
       - name: Commit refreshed lockfile on main
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |

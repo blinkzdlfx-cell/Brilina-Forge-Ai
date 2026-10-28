@@ -2,6 +2,8 @@
 
 import * as React from "react"
 import { type ChatUIMessage as ChatMessageType } from "@/tools"
+import { ActivityStatus } from "@/components/activity-status"
+import { BackgroundJobPanel } from "@/components/background-job-panel"
 import { useChat } from "@ai-sdk/react"
 import { lastAssistantMessageIsCompleteWithToolCalls } from "ai"
 
@@ -16,7 +18,6 @@ import { ChatSidebar } from "@/components/chat-sidebar"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { PromptForm } from "@/components/prompt-form"
 import { QuestionCard } from "@/components/question-card"
-import { StatusIcon } from "@/components/status-icon"
 import { Suggestions } from "@/components/suggestions"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
@@ -35,7 +36,6 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller"
-import { Trace, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace"
 
 export function Chat({ models, initialConversationId = null }: { models: GatewayModel[]; initialConversationId?: string | null }) {
   React.useEffect(() => {
@@ -71,6 +71,9 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
   const [conversationsLoading, setConversationsLoading] = React.useState(true)
   const [conversationLoading, setConversationLoading] = React.useState(Boolean(initialConversationId))
   const [isPreparingAttachments, setIsPreparingAttachments] = React.useState(false)
+  const [isPreparingRequest, setIsPreparingRequest] = React.useState(false)
+  const [hasPendingSubmission, setHasPendingSubmission] = React.useState(false)
+  const [activeBackgroundJobId, setActiveBackgroundJobId] = React.useState<string | null>(null)
   const messageViewportRef = React.useRef<HTMLDivElement>(null)
   const shouldAutoFollowRef = React.useRef(true)
   const forceScrollToLatestRef = React.useRef(false)
@@ -99,7 +102,19 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
     // Resume the conversation automatically once the user has answered the
     // ask_user questionnaire.
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+    onError: () => setHasPendingSubmission(false),
   })
+  // A new conversation changes the useChat instance. Async send preparation can
+  // outlive the render that started it, so always submit through the latest instance.
+  const sendMessageRef = React.useRef(sendMessage)
+  const setMessagesRef = React.useRef(setMessages)
+  React.useLayoutEffect(() => {
+    sendMessageRef.current = sendMessage
+    setMessagesRef.current = setMessages
+  }, [sendMessage, setMessages])
+  // Do not write a restored history snapshot back as if it were a newly
+  // completed response. Only persist after a local send, regeneration, or tool reply.
+  const shouldPersistMessagesRef = React.useRef(false)
 
   React.useEffect(() => {
     let cancelled = false
@@ -124,6 +139,20 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
     : (models[0]?.id ?? "")
 
   const isBusy = status === "submitted" || status === "streaming"
+  const refreshAfterBackgroundJob = React.useCallback(async () => {
+    const id = conversationIdRef.current
+    if (!id) return
+    try {
+      const response = await fetch("/api/conversations/" + encodeURIComponent(id), { cache: "no-store" })
+      const payload = await response.json() as { messages?: ChatMessageType[] }
+      if (response.ok && payload.messages && conversationIdRef.current === id) {
+        setMessagesRef.current(payload.messages)
+        setActiveBackgroundJobId(null)
+        setConversationNotice("")
+        void refreshConversations().catch(() => undefined)
+      }
+    } catch { /* The persisted job remains available to recover on the next poll. */ }
+  }, [refreshConversations])
   const recentImageCount = React.useMemo(
     () => messages.slice(-5).reduce((count, message) => {
       if (message.role !== "user") return count
@@ -141,10 +170,20 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
   )
 
   const handleSendMessage = React.useCallback(
-    async (text: string, files: File[] = []): Promise<boolean> => {
+    async (text: string, files: File[] = [], runInBackground = false): Promise<boolean> => {
       if (sendPreparationRef.current) return false
       sendPreparationRef.current = true
+      setIsPreparingRequest(true)
+      setHasPendingSubmission(true)
       setIsPreparingAttachments(files.length > 0)
+      if (runInBackground && files.length > 0) {
+        setAttachmentError("Background tasks currently accept text prompts only. Send the task without attachments.")
+        setHasPendingSubmission(false)
+        setIsPreparingRequest(false)
+        setIsPreparingAttachments(false)
+        sendPreparationRef.current = false
+        return false
+      }
       forceScrollToLatestRef.current = true
       shouldAutoFollowRef.current = true
       let submissionQueued = false
@@ -175,12 +214,38 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
             targetId = payload.conversation.id
             conversationIdRef.current = targetId
             setConversationId(targetId)
+            // Give React one commit to attach sendMessageRef to the new useChat instance.
+            // This replaces the old sidebar-refresh delay without blocking on network I/O.
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
             window.history.replaceState(null, "", "/c/" + encodeURIComponent(targetId))
-            await refreshConversations()
+            void refreshConversations().catch(() => undefined)
           }
         } catch (cause) {
           setAttachmentError(cause instanceof Error ? cause.message : "Could not create a conversation.")
           return false
+        }
+
+        if (runInBackground) {
+          const response = await fetch("/api/jobs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt: text, model: resolvedModel, conversationId: targetId, idempotencyKey: crypto.randomUUID() }),
+          })
+          const payload = await response.json().catch(() => null) as { job?: { id?: string }; jobId?: string; userMessage?: ChatUIMessage; error?: string } | null
+          if (payload?.userMessage) {
+            setMessagesRef.current((current) => current.some((message) => message.id === payload.userMessage?.id) ? current : [...current, payload.userMessage as ChatUIMessage])
+          }
+          const jobId = payload?.job?.id ?? payload?.jobId
+          if (jobId) setActiveBackgroundJobId(jobId)
+          if (!response.ok && !jobId) {
+            setAttachmentError(payload?.error ?? "Could not start the background task.")
+            setHasPendingSubmission(false)
+            return false
+          }
+          if (!response.ok) setConversationNotice(payload?.error ?? "The background task could not start.")
+          submissionQueued = true
+          setHasPendingSubmission(false)
+          return true
         }
 
         // Keep the user's Writing model selected. Vision models are chosen internally for image requests.
@@ -231,20 +296,26 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
             ...uploadedAttachments.map((file) => ({ type: "file" as const, url: "/api/files/" + encodeURIComponent(file.id) + "/view", mediaType: file.mimeType, filename: file.name })),
           ]
           submissionQueued = true
-          void sendMessage({ parts: visibleParts } as ChatUIMessage, { body: { model: resolvedModel, conversationId: targetId } })
+          shouldPersistMessagesRef.current = true
+          void sendMessageRef.current({ parts: visibleParts } as ChatUIMessage, { body: { model: resolvedModel, conversationId: targetId } })
           return true
         }
 
         submissionQueued = true
-        void sendMessage({ text }, { body: { model: resolvedModel, conversationId: targetId } })
+        shouldPersistMessagesRef.current = true
+        void sendMessageRef.current({ text }, { body: { model: resolvedModel, conversationId: targetId } })
         return true
       } finally {
         sendPreparationRef.current = false
         setIsPreparingAttachments(false)
-        if (!submissionQueued) forceScrollToLatestRef.current = false
+        setIsPreparingRequest(false)
+        if (!submissionQueued) {
+          setHasPendingSubmission(false)
+          forceScrollToLatestRef.current = false
+        }
       }
     },
-    [models, recentImageCount, resolvedModel, sendMessage, refreshConversations]
+    [models, recentImageCount, resolvedModel, refreshConversations]
   )
 
   const rawErrorMessage = error?.message ?? ""
@@ -258,6 +329,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
         : rawErrorMessage || "The request could not be completed. Please try again."
 
   const lastMessage = messages.at(-1)
+  const isAwaitingFirstText = isBusy && (lastMessage?.role === "user" || (lastMessage?.role === "assistant" && !lastMessage.parts.some((part) => part.type === "text" && part.text.trim())))
   const firstUserMessage = messages.find((message) => message.role === "user")
   const firstUserText = firstUserMessage?.parts.find(
     (part) => part.type === "text" && !part.text.startsWith("[[FORGE_PRIVATE_ATTACHMENT_CONTEXT]]\n")
@@ -281,6 +353,9 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
       : undefined
 
   const startNewChat = React.useCallback(() => {
+    setActiveBackgroundJobId(null)
+    setHasPendingSubmission(false)
+    setIsPreparingRequest(false)
     conversationIdRef.current = null
     setConversationId(null)
     window.history.replaceState(null, "", "/")
@@ -292,6 +367,8 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
   }, [])
   const openConversation = React.useCallback(async (id: string) => {
     if (conversationIdRef.current === id && !conversationLoading) return
+    setActiveBackgroundJobId(null)
+    setHasPendingSubmission(false)
     shouldAutoFollowRef.current = true
     forceScrollToLatestRef.current = true
     conversationIdRef.current = id
@@ -302,11 +379,11 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
       const payload = await response.json() as { messages?: ChatMessageType[] }
       if (!response.ok || !payload.messages) throw new Error("Could not load this conversation.")
       window.history.replaceState(null, "", "/c/" + encodeURIComponent(id))
-      setMessages(payload.messages)
+      setMessagesRef.current(payload.messages)
       setConversationNotice("")
       setConversationLoading(false)
     } catch (cause) { setConversationNotice(cause instanceof Error ? cause.message : "Could not load this conversation."); setConversationLoading(false) }
-  }, [conversationLoading, setMessages])
+  }, [conversationLoading])
   React.useEffect(() => {
     if (!initialConversationId) return
     let cancelled = false
@@ -314,19 +391,31 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
     fetch("/api/conversations/" + encodeURIComponent(initialConversationId)).then(async (response) => {
       const payload = await response.json() as { messages?: ChatMessageType[] }
       if (!response.ok || !payload.messages) throw new Error("Could not load this conversation.")
-      if (cancelled) return
+      if (cancelled || conversationIdRef.current !== initialConversationId) return
       shouldAutoFollowRef.current = true
       forceScrollToLatestRef.current = true
-      setMessages(payload.messages)
+      setMessagesRef.current(payload.messages)
       setConversationLoading(false)
     }).catch((cause) => { if (!cancelled) { setConversationNotice(cause instanceof Error ? cause.message : "Could not load this conversation."); setConversationLoading(false) } })
     return () => { cancelled = true }
-  }, [initialConversationId, setMessages])
+  }, [initialConversationId])
+  React.useEffect(() => {
+    const id = conversationId
+    if (!id) return
+    let active = true
+    fetch("/api/jobs?conversationId=" + encodeURIComponent(id), { cache: "no-store" }).then(async (response) => {
+      if (!response.ok) return null
+      return await response.json() as { job?: { id?: string } | null }
+    }).then((payload) => {
+      if (active && conversationIdRef.current === id) setActiveBackgroundJobId(payload?.job?.id ?? null)
+    }).catch(() => undefined)
+    return () => { active = false }
+  }, [conversationId])
   React.useEffect(() => {
     // Persist partial assistant content during generation, not only after the
     // stream ends. If the browser reloads or the network drops, the latest
     // received text remains recoverable from conversation history.
-    if ((status !== "ready" && status !== "streaming" && status !== "submitted") || !conversationId || messages.length === 0) return
+    if (!shouldPersistMessagesRef.current || (status !== "ready" && status !== "streaming" && status !== "submitted") || !conversationId || messages.length === 0) return
     const controller = new AbortController()
     const timer = setTimeout(() => {
       const activeAssistantId = messages.at(-1)?.role === "assistant" ? messages.at(-1)?.id : null
@@ -343,7 +432,11 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
               : "complete",
         })) }), signal: controller.signal,
       }).then(async (response) => {
-        if (!response.ok) { setConversationNotice("Conversation history could not be saved. An attachment may need secure upload first."); return }
+        if (!response.ok) {
+          setConversationNotice("Conversation history could not be saved. An attachment may need secure upload first.")
+          if (status === "ready") shouldPersistMessagesRef.current = false
+          return
+        }
         if (status === "ready") {
           await refreshConversations()
           // Refresh version counts after a regeneration without resetting the
@@ -359,13 +452,14 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
               const version = message.responseVersion
               return message.id + ":" + (version ? version.current + "/" + version.total : "")
             }).join("|")
-            if (currentKey !== storedKey) setMessages(history.messages)
+            if (conversationIdRef.current === conversationId && currentKey !== storedKey) setMessagesRef.current(history.messages)
           }
+          shouldPersistMessagesRef.current = false
         }
       }).catch(() => undefined)
     }, status === "ready" ? 300 : 1000)
     return () => { clearTimeout(timer); controller.abort() }
-  }, [status, conversationId, messages, error, refreshConversations, setMessages])
+  }, [status, conversationId, messages, error, refreshConversations])
   React.useEffect(() => {
     const viewport = messageViewportRef.current
     if (!viewport) return
@@ -373,8 +467,34 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
       const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
       shouldAutoFollowRef.current = distanceFromBottom < 120
     }
+    // Disable auto-follow as soon as the user expresses an intent to read
+    // upward; this prevents streaming resize events from fighting touch scrolling.
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaY < 0) shouldAutoFollowRef.current = false
+    }
+    let previousTouchY: number | null = null
+    const onTouchStart = (event: TouchEvent) => {
+      previousTouchY = event.touches[0]?.clientY ?? null
+    }
+    const onTouchMove = (event: TouchEvent) => {
+      const currentY = event.touches[0]?.clientY
+      if (currentY === undefined || previousTouchY === null) return
+      if (currentY > previousTouchY + 4) shouldAutoFollowRef.current = false
+      previousTouchY = currentY
+    }
+    const onTouchEnd = () => { previousTouchY = null }
     viewport.addEventListener("scroll", onScroll, { passive: true })
-    return () => viewport.removeEventListener("scroll", onScroll)
+    viewport.addEventListener("wheel", onWheel, { passive: true })
+    viewport.addEventListener("touchstart", onTouchStart, { passive: true })
+    viewport.addEventListener("touchmove", onTouchMove, { passive: true })
+    viewport.addEventListener("touchend", onTouchEnd, { passive: true })
+    return () => {
+      viewport.removeEventListener("scroll", onScroll)
+      viewport.removeEventListener("wheel", onWheel)
+      viewport.removeEventListener("touchstart", onTouchStart)
+      viewport.removeEventListener("touchmove", onTouchMove)
+      viewport.removeEventListener("touchend", onTouchEnd)
+    }
   }, [conversationLoading, messages.length])
 
   React.useEffect(() => {
@@ -432,10 +552,11 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
     const history = await fetch("/api/conversations/" + encodeURIComponent(id))
     const payload = await history.json() as { messages?: ChatMessageType[] }
     if (history.ok && payload.messages) {
-      setMessages(payload.messages)
+      if (conversationIdRef.current !== id) return
+      setMessagesRef.current(payload.messages)
       setConversationNotice("")
     }
-  }, [setMessages])
+  }, [])
 
   const updateConversation = React.useCallback(async (id: string, patch: Record<string, unknown>) => {
     const response = await fetch("/api/conversations/" + encodeURIComponent(id), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) })
@@ -495,6 +616,10 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
               <CogIcon className="size-8 animate-spin text-muted-foreground" />
               <div className="w-full max-w-sm space-y-3"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-full" /><Skeleton className="h-16 w-2/3 rounded-2xl" /></div>
             </div>
+          ) : messages.length === 0 && (isBusy || isPreparingRequest || hasPendingSubmission) ? (
+            <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col justify-start px-6 pt-16" role="status" aria-label="Preparing response">
+              <ActivityStatus label={isPreparingRequest ? "Preparing" : "Thinking"} />
+            </div>
           ) : messages.length === 0 ? (
             <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-6">
               <Empty>
@@ -536,7 +661,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
                                 return
                               }
                             }
-                            setMessages((current) => current.slice(0, current.findIndex((item) => item.id === message.id)))
+                            setMessagesRef.current((current) => current.slice(0, current.findIndex((item) => item.id === message.id)))
                             window.setTimeout(() => void handleSendMessage(editedText), 0)
                           })()
                         }}
@@ -548,44 +673,37 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
                           }
                           onRetry={
                             !isBusy && message.id === lastMessage?.id
-                              ? () =>
+                              ? () => {
+                                  shouldPersistMessagesRef.current = true
                                   regenerate({
                                     messageId: message.id,
                                     body: { model: resolvedModel, conversationId: conversationIdRef.current },
                                   })
+                                }
                               : undefined
                           }
                         />
                       </MessageScrollerItem>
                     ))}
-                    {status === "submitted" && (
+                    {(isAwaitingFirstText || isPreparingRequest || (hasPendingSubmission && messages.length === 0)) && (
                       <MessageScrollerItem messageId="thinking">
-                        <Message>
-                          <MessageContent>
-                            <Trace>
-                              <TraceLine status="running">
-                                <TraceIcon>
-                                  <StatusIcon status="running" />
-                                </TraceIcon>
-                                <TraceTitle>Thinking</TraceTitle>
-                              </TraceLine>
-                            </Trace>
-                          </MessageContent>
-                        </Message>
+                        <Message><MessageContent><ActivityStatus label={isPreparingRequest ? "Preparing" : status === "submitted" ? "Thinking" : "Working"} /></MessageContent></Message>
                       </MessageScrollerItem>
                     )}
+                    {activeBackgroundJobId && <MessageScrollerItem messageId={"background-job-" + activeBackgroundJobId}><BackgroundJobPanel jobId={activeBackgroundJobId} onCompleted={refreshAfterBackgroundJob} /></MessageScrollerItem>}
                   </MessageScrollerContent>
                   {pendingQuestion && (
                     <QuestionCard
                       part={pendingQuestion}
-                      onAnswer={(toolCallId, answer) =>
+                      onAnswer={(toolCallId, answer) => {
+                        shouldPersistMessagesRef.current = true
                         addToolOutput({
                           tool: "ask_user",
                           toolCallId,
                           output: answer,
                           options: { body: { model: resolvedModel, conversationId: conversationIdRef.current } },
                         })
-                      }
+                      }}
                     />
                   )}
                 </MessageScrollerViewport>

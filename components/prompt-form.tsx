@@ -125,7 +125,7 @@ export function PromptForm({
   isPreparingAttachments = false,
 }: {
   isBusy: boolean
-  onSubmit: (text: string, files?: File[]) => Promise<boolean> | boolean
+  onSubmit: (text: string, files?: File[], runInBackground?: boolean) => Promise<boolean> | boolean
   onStop: () => void
   canAttachImages: boolean
   maxImages: number
@@ -142,6 +142,7 @@ export function PromptForm({
   const [previewError, setPreviewError] = React.useState("")
   const [previewLoading, setPreviewLoading] = React.useState(false)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
+  const [runInBackground, setRunInBackground] = React.useState(false)
   const attachmentMenuRef = React.useRef<HTMLDivElement>(null)
   const [imageError, setImageError] = React.useState("")
   const imageInputRef = React.useRef<HTMLInputElement>(null)
@@ -360,7 +361,7 @@ export function PromptForm({
       if (intent === "send") {
         const currentInput = inputRef.current.trim()
         const combined = [currentInput, transcript].filter(Boolean).join(currentInput ? " " : "")
-        const succeeded = await onSubmit(combined, selectedImages)
+        const succeeded = await onSubmit(combined, selectedImages, false)
         if (succeeded) {
           setSelectedImages([])
           setImageError("")
@@ -644,9 +645,10 @@ export function PromptForm({
     if ((!text && selectedImages.length === 0) || isBusy || isPreparingAttachments || isSubmitting || voiceState === "transcribing" || voiceState === "stopped") return
     setIsSubmitting(true)
     try {
-      const succeeded = await onSubmit(text, selectedImages)
+      const succeeded = await onSubmit(text, selectedImages, runInBackground)
       if (!succeeded) return
       setSelectedImages([])
+      setRunInBackground(false)
       setImageError("")
       inputRef.current = ""
       setInput("")
@@ -736,6 +738,10 @@ export function PromptForm({
                 </div>}
               </div>
             </>
+            <label className="ml-auto flex shrink-0 items-center gap-1.5 px-1 text-[11px] text-muted-foreground" title="Run this request as a persistent background task">
+              <input type="checkbox" checked={runInBackground} onChange={(event) => setRunInBackground(event.target.checked)} disabled={isSubmitting || isBusy || selectedImages.length > 0} className="size-3.5 accent-primary" />
+              Background task
+            </label>
             {isVoiceActive ? (
               <>
                 {isRecording ? <WaveformRing level={waveformLevel} /> : null}
@@ -778,7 +784,7 @@ export function PromptForm({
               </InputGroupButton>
             )}
             {isBusy ? (
-              <InputGroupButton type="button" size="icon-sm" variant="outline" aria-label="Stop generating" className="ml-auto" onClick={onStop}>
+              <InputGroupButton type="button" size="icon-sm" variant="outline" aria-label="Stop generating" className="ml-2" onClick={onStop}>
                 <SquareIcon />
               </InputGroupButton>
             ) : (
@@ -787,7 +793,7 @@ export function PromptForm({
                 size="icon-sm"
                 variant="default"
                 aria-label={isRecording ? "Send audio and transcribe" : isTranscribing ? "Transcribing audio" : "Send message"}
-                className="ml-auto"
+                className="ml-2"
                 disabled={isTranscribing || isPreparingAttachments || isSubmitting || voiceState === "stopped" || (!input.trim() && selectedImages.length === 0 && !isRecording && !(voiceState === "failed" && hasAudio))}
               >
                 {isRecording ? <ArrowUpIcon /> : isTranscribing || isPreparingAttachments || isSubmitting ? <span className="size-3 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <ArrowUpIcon />}

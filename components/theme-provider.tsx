@@ -38,6 +38,18 @@ function ThemeHotkey() {
   const { resolvedTheme, setTheme } = useTheme()
 
   React.useEffect(() => {
+    let active = true
+    fetch("/api/profile/preferences", { cache: "no-store" }).then(async (response) => {
+      if (!response.ok) return null
+      return await response.json() as { preferences?: { theme?: string } }
+    }).then((payload) => {
+      const theme = payload?.preferences?.theme
+      if (active && (theme === "system" || theme === "light" || theme === "dark")) setTheme(theme)
+    }).catch(() => undefined)
+    return () => { active = false }
+  }, [setTheme])
+
+  React.useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.defaultPrevented || event.repeat) {
         return

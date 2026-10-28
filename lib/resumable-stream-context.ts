@@ -30,7 +30,9 @@ export function getResumableStreamContext(): Promise<ResumableContext | null> {
       await Promise.all([publisher.connect(), subscriber.connect()])
       context = createResumableStreamContext({ waitUntil: after, publisher, subscriber })
       return context
-    } catch {
+    } catch (error) {
+      // Log only the error class; never expose Redis URLs, usernames, or secrets.
+      console.error("[forge-redis] context_init_failed", error instanceof Error ? error.name : "UnknownError")
       await Promise.allSettled([
         publisher?.isOpen ? publisher.quit() : Promise.resolve(),
         subscriber?.isOpen ? subscriber.quit() : Promise.resolve(),

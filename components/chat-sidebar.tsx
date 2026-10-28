@@ -11,6 +11,7 @@ import {
 import { useRouter } from "next/navigation"
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarRail, useSidebar } from "@/components/ui/sidebar"
 import { Skeleton } from "@/components/ui/skeleton"
+import { PersonalizationSettings } from "@/components/personalization-settings"
 
 export type SidebarConversation = { id: string; title: string; is_pinned: boolean; archived_at: string | null; updated_at: string }
 type ChatSidebarProps = {
@@ -22,13 +23,13 @@ type ChatSidebarProps = {
   onDeleteConversation: (item: SidebarConversation) => void
 }
 
-function StyledModal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+function StyledModal({ title, children, onClose, className = "" }: { title: string; children: React.ReactNode; onClose: () => void; className?: string }) {
   React.useEffect(() => {
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose() }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
   }, [onClose])
-  return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+  return <div className={`fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm ${className}`} onPointerDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
     <section role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-md rounded-2xl border border-border bg-popover p-5 text-popover-foreground shadow-2xl">
       <div className="mb-4 flex items-center justify-between"><h2 className="text-base font-semibold">{title}</h2><button type="button" aria-label="Close" onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"><XIcon className="size-4" /></button></div>
       {children}
@@ -41,7 +42,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
   const { isMobile, setOpenMobile } = useSidebar()
   const [menuFor, setMenuFor] = React.useState<string | null>(null)
   const [recentMenuOpen, setRecentMenuOpen] = React.useState(false)
-  const [modal, setModal] = React.useState<"recent" | "pinned" | "search" | "settings" | "rename" | "delete" | null>(null)
+  const [modal, setModal] = React.useState<"recent" | "pinned" | "search" | "settings" | "personalization" | "rename" | "delete" | null>(null)
   const [selected, setSelected] = React.useState<SidebarConversation | null>(null)
   const [renameValue, setRenameValue] = React.useState("")
   const [search, setSearch] = React.useState("")
@@ -144,7 +145,10 @@ export function ChatSidebar(props: ChatSidebarProps) {
           <button type="button" aria-label="New chat" title="New chat" onClick={props.onNewChat} className="rounded-lg p-2 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground group-data-[collapsible=icon]:hidden"><PlusIcon className="size-4" /></button>
         </div>
         <div className="hidden gap-1 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center">
-          <button type="button" aria-label="Recent conversations" title="Recent conversations" onClick={() => setModal("recent")} className="rounded-lg p-2 hover:bg-sidebar-accent"><HistoryIcon className="size-4" /></button>
+          <button type="button" aria-label="New chat" title="New chat" onClick={props.onNewChat} className="rounded-lg p-2 hover:bg-sidebar-accent"><PlusIcon className="size-4" /></button>
+          <button type="button" aria-label="Search conversations" title="Search conversations" onClick={() => { setSearch(""); setModal("search") }} className="rounded-lg p-2 hover:bg-sidebar-accent"><SearchIcon className="size-4" /></button>
+          <button type="button" aria-label="Recent conversations" title="Recent conversations" onClick={() => setModal("recent")} className="rounded-lg p-2 hover:bg-sidebar-accent"><MessagesSquareIcon className="size-4" /></button>
+          <button type="button" aria-label="Pinned conversations" title="Pinned conversations" onClick={() => setModal("pinned")} className="rounded-lg p-2 hover:bg-sidebar-accent"><PinIcon className="size-4" /></button>
         </div>
       </SidebarHeader>
       <SidebarContent>
@@ -188,7 +192,8 @@ export function ChatSidebar(props: ChatSidebarProps) {
       <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={closeModal} className="rounded-xl px-4 py-2 text-sm hover:bg-muted">Cancel</button><button type="button" onClick={() => { props.onDeleteConversation(selected); closeModal() }} className="rounded-xl bg-destructive px-4 py-2 text-sm text-destructive-foreground">Delete</button></div>
     </StyledModal>}
 
-    {avatarFullPreviewOpen && (avatarPreviewUrl || avatarUrl) && <StyledModal title="Profile photo preview" onClose={() => setAvatarFullPreviewOpen(false)}><div className="flex max-h-[75vh] items-center justify-center overflow-auto rounded-xl bg-muted/40 p-2"><img src={avatarPreviewUrl || avatarUrl} alt="Full-size profile photo" className="max-h-[70vh] max-w-full rounded-lg object-contain" /></div></StyledModal>}
+    {avatarFullPreviewOpen && (avatarPreviewUrl || avatarUrl) && <StyledModal title="Profile photo preview" className="z-[110]" onClose={() => setAvatarFullPreviewOpen(false)}><div className="flex max-h-[75vh] items-center justify-center overflow-auto rounded-xl bg-muted/40 p-2"><img src={avatarPreviewUrl || avatarUrl} alt="Full-size profile photo" className="max-h-[70vh] max-w-full rounded-lg object-contain" /></div></StyledModal>}
+    {modal === "personalization" && <PersonalizationSettings onClose={() => setModal("settings")} />}
     {modal === "settings" && <StyledModal title="Profile and settings" onClose={closeModal}>
       <div className="flex items-center gap-4">
         <button type="button" onClick={() => { if (avatarPreviewUrl || avatarUrl) setAvatarFullPreviewOpen(true); else avatarInput.current?.click() }} aria-label={(avatarPreviewUrl || avatarUrl) ? "Preview profile photo" : "Choose profile photo"} title={(avatarPreviewUrl || avatarUrl) ? "Preview profile photo" : "Choose profile photo"} className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted ring-offset-background transition hover:ring-2 hover:ring-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
@@ -197,8 +202,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
         <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{profileEmail || "Your account"}</p><p className="mt-1 text-xs text-muted-foreground">Profile photo (up to 2 MiB)</p><input ref={avatarInput} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => selectAvatar(e.currentTarget.files?.[0])} />{avatarSelectedFile ? <div className="mt-2 flex flex-wrap gap-2"><button type="button" disabled={avatarBusy} onClick={() => avatarInput.current?.click()} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50"><UploadIcon className="size-3.5" />Choose another</button><button type="button" disabled={avatarBusy} onClick={cancelAvatarSelection} className="rounded-lg px-3 py-1.5 text-xs hover:bg-muted">Cancel</button><button type="button" disabled={avatarBusy} onClick={() => void uploadAvatar()} className="rounded-lg bg-primary px-3 py-1.5 text-xs text-primary-foreground disabled:opacity-50">{avatarBusy ? "Uploading…" : "Save photo"}</button></div> : <button type="button" disabled={avatarBusy} onClick={() => avatarInput.current?.click()} className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50"><UploadIcon className="size-3.5" />Upload photo</button>}</div>
       </div>
       {avatarError && <p role="alert" className="mt-3 text-sm text-destructive">{avatarError}</p>}
-      {(avatarPreviewUrl || avatarUrl) && <button type="button" onClick={() => setAvatarFullPreviewOpen(true)} className="mt-3 rounded-lg px-2 py-1.5 text-xs font-medium text-primary hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Preview full photo</button>}
-      <div className="mt-5 border-t border-border pt-3"><button type="button" onClick={() => { closeModal(); router.push("/change-password") }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-muted"><SettingsIcon className="size-4" />Settings and password</button><button type="button" onClick={async () => { closeModal(); await fetch("/api/auth/sign-out", { method: "POST" }).catch(() => undefined); router.replace("/login"); router.refresh() }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm text-destructive hover:bg-destructive/10"><LogOutIcon className="size-4" />Log out</button></div>
+      <div className="mt-5 border-t border-border pt-3"><button type="button" onClick={() => setModal("personalization")} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-muted"><SettingsIcon className="size-4" />Personalization</button><button type="button" onClick={() => { closeModal(); router.push("/change-password") }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-muted"><SettingsIcon className="size-4" />Settings and password</button><button type="button" onClick={async () => { closeModal(); await fetch("/api/auth/sign-out", { method: "POST" }).catch(() => undefined); router.replace("/login"); router.refresh() }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm text-destructive hover:bg-destructive/10"><LogOutIcon className="size-4" />Log out</button></div>
     </StyledModal>}
   </>
 }
