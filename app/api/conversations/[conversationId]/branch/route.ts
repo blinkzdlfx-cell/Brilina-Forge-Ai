@@ -10,6 +10,10 @@ export async function POST(request: Request, context: RouteContext) {
   const { conversationId } = await context.params
   if (!UUID_PATTERN.test(conversationId)) return Response.json({ error: "conversation_not_found" }, { status: 404 })
 
+  const { data: conversation } = await auth.supabase.from("conversations")
+    .select("id").eq("id", conversationId).eq("user_id", auth.user.id).maybeSingle()
+  if (!conversation) return Response.json({ error: "conversation_not_found" }, { status: 404 })
+
   let body: { messageId?: unknown }
   try {
     body = await request.json() as { messageId?: unknown }
