@@ -51,11 +51,9 @@ export async function POST(request: Request) {
   }
 
   const admin = createAdminClient()
-  if (conversationId) {
-    const { data: ownedConversation, error } = await auth.supabase.from("conversations")
-      .select("id").eq("id", conversationId).eq("user_id", auth.user.id).maybeSingle()
-    if (error || !ownedConversation) return Response.json({ error: "conversation_not_found" }, { status: 404 })
-  }
+  const { data: ownedConversation, error: conversationError } = await auth.supabase.from("conversations")
+    .select("id,title").eq("id", conversationId).eq("user_id", auth.user.id).maybeSingle()
+  if (conversationError || !ownedConversation) return Response.json({ error: "conversation_not_found" }, { status: 404 })
 
   if (idempotencyKey) {
     const { data: existing } = await admin.from("background_jobs").select("id,status,progress,stage,progress_message")
@@ -98,7 +96,10 @@ export async function POST(request: Request) {
     await admin.from("background_jobs").update({ status: "failed", stage: "persistence", error_code: "user_message_save_failed", error_message: "Could not save the task prompt to conversation history.", completed_at: new Date().toISOString() }).eq("id", job.id)
     return Response.json({ error: "conversation_message_save_failed", jobId: job.id }, { status: 500 })
   }
-  await admin.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", conversationId).eq("user_id", auth.user.id)
+  await admin.from("conversations").update({
+    ...(ownedConversation.title === "New chat" ? { title: prompt.slice(0, 64) || "Background task" } : {}),
+    updated_at: new Date().toISOString(),
+  }).eq("id", conversationId).eq("user_id", auth.user.id)
   await addEvent(admin, {
     job_id: job.id, user_id: auth.user.id, stage: "queued",
     message: "Task queued. Preparing the background worker.", progress: 0,
