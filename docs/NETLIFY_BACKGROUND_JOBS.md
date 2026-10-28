@@ -4,7 +4,7 @@ Brilina Forge keeps normal chat on the existing Vercel request/stream path. Back
 
 ## Current capability boundary
 
-The worker uses the application's existing configured AI model and tools. At present, the in-app GitHub tool exposes public repository statistics; it is not a full code-editing, test-running, or merge tool. The worker must not claim that it changed files, ran tests, or merged a pull request unless those capabilities are separately implemented and actually invoked. This background job foundation is not a substitute for a sandboxed coding agent.
+The worker uses the application's selected AI model when that provider is configured, including Cloudflare Workers AI, Google Gemini, and Groq vision models. At present, the in-app GitHub tool exposes public repository statistics; it is not a full code-editing, test-running, or merge tool. The worker must not claim that it changed files, ran tests, or merged a pull request unless those capabilities are separately implemented and actually invoked. This background job foundation is not a substitute for a sandboxed coding agent.
 
 ## Setup
 
@@ -18,6 +18,7 @@ The worker uses the application's existing configured AI model and tools. At pre
    - `CLOUDFLARE_AI_API_TOKEN`
    - `TAVILY_API_KEY` if web search is enabled for background tasks.
    - `GROQ_API_KEY` if a selected vision model is needed.
+   - `GOOGLE_GENERATIVE_AI_API_KEY` if Google Gemini models are enabled.
 4. In Vercel environment variables, set the same `NETLIFY_WORKER_SECRET` and `NETLIFY_BACKGROUND_FUNCTION_URL` to the full Netlify function URL, for example `https://YOUR-NETLIFY-SITE.netlify.app/process-forge-job`.
 5. Redeploy both services after adding environment variables.
 6. From Brilina Forge, send a text-only prompt with **Background task** enabled. The browser should show a durable status panel; refresh the page while the task runs to verify recovery.

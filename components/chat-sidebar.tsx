@@ -122,7 +122,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
     finally { setAvatarBusy(false) }
   }
   const renderConversation = (item: SidebarConversation) => (
-    <SidebarMenuItem key={item.id} className="group/item">
+    <SidebarMenuItem key={item.id} className="group/item group-data-[collapsible=icon]:hidden">
       <SidebarMenuButton isActive={props.activeConversationId === item.id} tooltip={item.title} className="h-auto min-h-9 py-2 pr-9" onClick={() => selectConversation(item.id)}>
         <MessagesSquareIcon className="size-4 shrink-0" /><span className="truncate">{item.title}</span>
       </SidebarMenuButton>
@@ -167,6 +167,11 @@ export function ChatSidebar(props: ChatSidebarProps) {
         <button type="button" onClick={() => void openSettings()} className="flex w-full items-center gap-2 rounded-xl p-2 text-left hover:bg-sidebar-accent group-data-[collapsible=icon]:hidden" aria-label="Profile and settings" title="Profile and settings">
           {avatarUrl ? <img src={avatarUrl} alt="" className="size-8 rounded-full object-cover" /> : <span className="flex size-8 items-center justify-center rounded-full bg-muted"><SettingsIcon className="size-4" /></span>}
           <span className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden"><span className="block text-sm font-medium">Settings</span><span className="block truncate text-xs text-muted-foreground">Profile and account</span></span>
+        </button>
+        <button type="button" onClick={() => void openSettings()} className="hidden items-center justify-center rounded-xl p-1.5 hover:bg-sidebar-accent group-data-[collapsible=icon]:flex" aria-label="Profile and settings" title="Profile and settings">
+          {avatarUrl
+            ? <img src={avatarUrl} alt="" className="size-8 rounded-full object-cover" />
+            : <span className="flex size-8 items-center justify-center rounded-full bg-muted"><SettingsIcon className="size-4" /></span>}
         </button>
       </SidebarFooter>
       <SidebarRail />

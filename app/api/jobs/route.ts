@@ -97,8 +97,9 @@ export async function POST(request: Request) {
     await admin.from("background_jobs").update({ status: "failed", stage: "persistence", error_code: "user_message_save_failed", error_message: "Could not save the task prompt to conversation history.", completed_at: new Date().toISOString() }).eq("id", job.id)
     return Response.json({ error: "conversation_message_save_failed", jobId: job.id }, { status: 500 })
   }
+  // Keep new conversations titled "New chat" until the completed exchange can
+  // be titled by the dedicated GLM 4.7 Flash title endpoint.
   await admin.from("conversations").update({
-    ...(ownedConversation.title === "New chat" ? { title: prompt.slice(0, 64) || "Background task" } : {}),
     updated_at: new Date().toISOString(),
   }).eq("id", conversationId).eq("user_id", auth.user.id)
   await addEvent(admin, {

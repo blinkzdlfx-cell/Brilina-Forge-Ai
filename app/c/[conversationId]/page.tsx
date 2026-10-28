@@ -5,9 +5,27 @@ import { Chat } from "@/components/chat"
 import { getUserContext } from "@/lib/auth/require-user"
 import { getAvailableModels } from "@/lib/models"
 
-export const metadata: Metadata = {
-  title: "Conversation · Brilina Forge AI",
-  description: "A private conversation in Brilina Forge AI.",
+export async function generateMetadata({ params }: { params: Promise<{ conversationId: string }> }): Promise<Metadata> {
+  const { conversationId } = await params
+  if (!UUID_PATTERN.test(conversationId)) return { title: "Brilina Forge AI" }
+
+  const context = await getUserContext({ allowMustChange: true })
+  if (!context.ok) return { title: "Brilina Forge AI" }
+
+  const { data: conversation } = await context.supabase
+    .from("conversations")
+    .select("title")
+    .eq("id", conversationId)
+    .eq("user_id", context.user.id)
+    .maybeSingle()
+  const title = conversation?.title && conversation.title !== "New chat"
+    ? conversation.title + " · Brilina Forge AI"
+    : "Brilina Forge AI"
+
+  return {
+    title,
+    description: "A private conversation in Brilina Forge AI.",
+  }
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i

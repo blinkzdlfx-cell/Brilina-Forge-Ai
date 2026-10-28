@@ -1,0 +1,50 @@
+import assert from "node:assert/strict"
+import { readFile } from "node:fs/promises"
+import test from "node:test"
+
+const read = (path) => readFile(new URL("../" + path, import.meta.url), "utf8")
+
+test("the model registry exposes configured Gemini and expanded Cloudflare text models", async () => {
+  const models = await read("lib/models.ts")
+  const selector = await read("components/model-select.tsx")
+  assert.match(models, /GOOGLE_GENERATIVE_AI_API_KEY/)
+  assert.match(models, /Google Gemini 2\.5 Flash/)
+  assert.match(models, /Google Gemini 2\.5 Pro/)
+  assert.match(models, /@cf\/zai-org\/glm-5\.3-flash/)
+  assert.match(models, /@cf\/zai-org\/glm-5\.3/)
+  assert.match(models, /@cf\/openai\/gpt-oss-120b/)
+  assert.match(models, /@cf\/moonshotai\/kimi-k2\.7-code/)
+  assert.match(models, /generativelanguage\.googleapis\.com\/v1beta\/openai/)
+  assert.match(selector, /model\.capabilities\?\.includes\("text"\)/)
+})
+
+test("new conversations receive AI-generated titles without replacing manual names", async () => {
+  const createRoute = await read("app/api/conversations/route.ts")
+  const titleRoute = await read("app/api/conversations/[conversationId]/title/route.ts")
+  const chat = await read("components/chat.tsx")
+  const backgroundRoute = await read("app/api/jobs/route.ts")
+  assert.match(createRoute, /title/)
+  assert.match(titleRoute, /getLanguageModel\(CLOUDFLARE_MODEL_ID\)/)
+  assert.match(titleRoute, /generateText/)
+  assert.match(titleRoute, /conversation\.title !== "New chat"/)
+  assert.match(titleRoute, /\.eq\("title", "New chat"\)/)
+  assert.match(chat, /JSON\.stringify\(\{ title: "New chat" \}\)/)
+  assert.match(chat, /\/title", \{ method: "POST" \}/)
+  assert.match(chat, /document\.title =/)
+  assert.doesNotMatch(backgroundRoute, /title: prompt\.slice\(0, 64\)/)
+})
+
+test("collapsed sidebar hides conversation rows and retains the profile image control", async () => {
+  const sidebar = await read("components/chat-sidebar.tsx")
+  assert.match(sidebar, /group-data-\[collapsible=icon\]:hidden">\s*\n\s*<SidebarMenuButton/)
+  assert.match(sidebar, /group-data-\[collapsible=icon\]:flex/)
+  assert.match(sidebar, /avatarUrl/)
+})
+
+test("response version navigation is an action icon with an on-demand selector", async () => {
+  const message = await read("components/chat-message.tsx")
+  assert.match(message, /HistoryIcon/)
+  assert.match(message, /Choose response version/)
+  assert.match(message, /Select response version/)
+  assert.match(message, /setVersionSelectorOpen/)
+})
