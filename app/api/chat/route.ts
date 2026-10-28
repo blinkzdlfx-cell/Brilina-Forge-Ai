@@ -412,7 +412,7 @@ export async function POST(req: Request) {
           const turnMessageId = typeof lastUserMessage?.id === "string" ? lastUserMessage.id : null
           const { data: existing, error: existingError } = await auth.supabase
             .from("messages")
-            .select("id, version_number")
+            .select("id, version_number, turn_message_id")
             .eq("conversation_id", conversationId)
             .eq("client_message_id", responseMessage.id)
             .maybeSingle()
@@ -422,7 +422,7 @@ export async function POST(req: Request) {
               .eq("conversation_id", conversationId)
               .eq("role", "assistant")
               .eq("turn_message_id", turnMessageId)
-            const nextVersion = Math.max(0, ...(versions ?? []).map((row) => Number(row.version_number ?? 0))) + (existing ? 0 : 1)
+            const nextVersion = Math.max(0, ...(versions ?? []).map((row) => Number(row.version_number ?? 0))) + (existing?.turn_message_id === turnMessageId ? 0 : 1)
             await auth.supabase.from("messages").update({ is_active_version: false })
               .eq("conversation_id", conversationId).eq("turn_message_id", turnMessageId)
               .eq("role", "assistant").neq("client_message_id", responseMessage.id)
@@ -431,7 +431,7 @@ export async function POST(req: Request) {
                 parts: responseMessage.parts,
                 status: isAborted ? "interrupted" : "complete",
                 turn_message_id: turnMessageId,
-                version_number: Number(existing.version_number ?? nextVersion),
+                version_number: existing.turn_message_id === turnMessageId ? Number(existing.version_number ?? nextVersion) : nextVersion,
                 is_active_version: true,
               }).eq("id", existing.id).eq("conversation_id", conversationId)
             } else {
