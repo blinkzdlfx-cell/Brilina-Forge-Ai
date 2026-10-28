@@ -84,13 +84,17 @@ export function Chat({ models, initialConversationId = null, userName }: { model
   const modelStorageKey = "brilina-forge-selected-model"
 
   React.useEffect(() => {
+    let frame = 0
     try {
       const savedModel = window.localStorage.getItem(modelStorageKey)
       if (savedModel && models.some((item) => item.id === savedModel)) {
-        setModel(savedModel)
+        frame = window.requestAnimationFrame(() => setModel(savedModel))
       }
     } catch {
       // Storage may be unavailable in private or restricted browsing modes.
+    }
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame)
     }
   }, [models])
 
