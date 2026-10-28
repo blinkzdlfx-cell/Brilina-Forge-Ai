@@ -359,6 +359,23 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
     return () => cancelAnimationFrame(frame)
   }, [messages, status, conversationLoading])
 
+  // Keep restored conversations pinned to the final response while layout settles
+  // (including images, code blocks, and streamed Markdown). Manual scroll-up
+  // disables this observer until the user returns near the bottom.
+  React.useEffect(() => {
+    const viewport = messageViewportRef.current
+    if (!viewport || conversationLoading || typeof ResizeObserver === "undefined") return
+    const content = viewport.firstElementChild
+    if (!content) return
+    const observer = new ResizeObserver(() => {
+      if (!shouldAutoFollowRef.current && !forceScrollToLatestRef.current) return
+      viewport.scrollTop = viewport.scrollHeight
+      forceScrollToLatestRef.current = false
+    })
+    observer.observe(content)
+    return () => observer.disconnect()
+  }, [conversationLoading, messages.length])
+
   const updateConversation = React.useCallback(async (id: string, patch: Record<string, unknown>) => {
     const response = await fetch("/api/conversations/" + encodeURIComponent(id), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) })
     if (!response.ok) throw new Error("Could not update this conversation.")
@@ -423,8 +440,8 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
                 <EmptyHeader>
                   <EmptyTitle>What can I help with?</EmptyTitle>
                   <EmptyDescription>
-                    Pick a model and start chatting. Responses stream through
-                    Cloudflare Workers AI.
+                    Pick a model and start chatting. Responses stream directly from the
+                    configured model provider.
                   </EmptyDescription>
                 </EmptyHeader>
                 <EmptyContent>

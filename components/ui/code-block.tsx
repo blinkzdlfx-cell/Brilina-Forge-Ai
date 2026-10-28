@@ -119,7 +119,7 @@ function CodeBlockCopyButton({
           onClick?.(event)
           navigator.clipboard
             .writeText(value)
-            .then(() => setCopied(true))
+            .then(() => { setCopied(true); window.getSelection()?.removeAllRanges() })
             .catch(() => {})
         }}
         {...props}

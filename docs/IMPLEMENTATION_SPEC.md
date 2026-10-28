@@ -15,7 +15,7 @@ This document retains product requirements and acceptance criteria. **Runtime/ho
 - **Foundation Batch 2:** PR #33 was merged as `ab35de3ed9b5db62866b7f4d780c92d7e8104df7`. Direct browser-to-private-Supabase-Storage uploads, conversation/message persistence, and the audio-storage migration are in place. Migration `0007_private_audio_storage.sql` was explicitly approved and applied to project `jjocynbtuafdokkjemym` on 2026-10-27. Current authenticated acceptance is partial: the owner reports document upload works, while image handling/preview and attachment failure recovery need follow-up.
 - **Chat/sidebar interaction work:** PR #36 was merged to `main` as `d9763d0c84b02984fab6006045b7815b46369404`. GitHub Actions CI passed unit/contract tests, lint, typecheck, native Next.js production build, Worker build, and Cloud Run container build. The Vercel commit status is successful. The owner has confirmed sidebar rename/pin/archive/delete, mobile loading indicator, profile/settings modal, long-press prompt actions, new-chat messaging, and existing authentication work on mobile.
 - **Remaining Batch 2 acceptance gaps:** outside-tap dismissal for every popover; removing password/logout from the chat header menu; full-size image/document previews; keeping attachments in the composer through upload and retry; no generated visible prompt for attachment-only sends; no redundant fetch when selecting the already-loaded conversation; and smart scroll-follow that stops when the user scrolls away and resumes near the bottom.
-- A follow-up implementation branch, `fix/attachment-preview-dismissal-chat-streaming`, is being prepared for those gaps. It is not merged, and its CI/preview results must be checked before the owner retests it.
+- PR #37 (`85c1b76ceb427743e7ecebd3ad035fa0eccb1220`) merged the prior Batch 2 interaction fixes. The owner tested them and reports nearly all work; remaining presentation issues are being handled on `fix/streaming-attachment-layout-message-selection`, which is not merged and must pass CI/preview/manual acceptance.
 - Repository migrations, CI, and deployment status do not prove that every live provider workflow is correct. Keep automated results, Vercel status, authenticated preview tests, provider tests, and unknowns distinct.
 - The source currently enforces a 10-minute voice recording limit. Keep documentation aligned with the code unless an approved change is made.
 ## Upload and persistence reliability requirements
@@ -789,19 +789,16 @@ Delivery order is sequential; do not run parallel implementation workstreams:
 
 Stage 5 (Agent Workflow System) remains dependent on stable runtime, auth, and persistence. The final acceptance stage covers the entire application. Do not deploy, alter production DNS, apply live migrations, or begin GitHub integration without separate explicit approval.
 
-## Chat/sidebar interaction work — merged baseline and remaining acceptance
+## Chat/sidebar interaction work — merged baseline and remaining Batch 2 polish
 
-PR #36, `Improve chat attachments, message actions, sidebar, and conversation restoration`, was merged into `main` as `d9763d0c84b02984fab6006045b7815b46369404`. CI passed and the Vercel status check reported success.
+PR #36, `Improve chat attachments, message actions, sidebar, and conversation restoration`, merged as `d9763d0c84b02984fab6006045b7815b46369404`. PR #37, `Fix attachment previews, menu dismissal, and chat scroll-follow`, merged as `85c1b76ceb427743e7ecebd3ad035fa0eccb1220`.
 
-The merged implementation includes private attachment upload/processing, a plus-button attachment menu, conversation deep links, prompt and assistant actions, sidebar conversation controls, collapsed-sidebar recent/pinned/search access, loading states, and profile settings/photo upload. The user has manually confirmed the core sidebar actions, mobile loading indicator, profile/settings modal, long-press prompt actions, basic new-chat messaging, and existing authentication.
+The owner reports that nearly all tested functionality now works, including auth, profile/settings, uploads, sidebar rename/pin/archive/delete, message actions, and conversation refresh/history. The remaining issues are presentation-focused:
+- Streaming must display text progressively without intermediary buffering or expensive code highlighting during each token update.
+- Mixed image/document attachments must use one responsive gallery; every image or file opens and closes its own preview independently.
+- Restored conversations must settle at the bottom of the latest response, while manual scroll-up pauses auto-follow and returning to the bottom resumes it.
+- Profile photos need a local preview before the owner chooses to save/upload.
+- User message text should support native partial selection; remove the custom “Select text” action, clear selection after copying, and show a check icon after copy succeeds.
+- Pinned conversations should be the first sidebar section when any are pinned; Recent should lead when none are pinned.
 
-The current Batch 2 follow-up branch `fix/attachment-preview-dismissal-chat-streaming` proposes fixes for:
-- Dismiss all popovers on outside tap and Escape.
-- Keep password change and logout only inside profile/settings.
-- Add full-size image previews and in-app document previews where browser support permits.
-- Keep selected attachments in the composer while uploading/processing; show a small spinner only, preserve the selection on failure, and retry without creating a separate fake chat bubble.
-- Keep attachment-only messages free of generated visible prompt text while providing the model with bounded hidden attachment context.
-- Avoid reloading the already-active conversation and improve auto-follow while preserving the user's manual scroll position.
-- Update this specification and the execution plan with the actual implementation and acceptance state.
-
-This follow-up is not merged yet. Preserve private storage, owner checks, existing MIME/size limits, native streaming, and invite-only access. Do not start Batch 3 until this follow-up has passed CI, preview verification, and the owner's acceptance pass.
+The current open polish branch is `fix/streaming-attachment-layout-message-selection`. It is not merged. Preserve private storage, owner checks, existing MIME/size limits, invite-only access, accepted auth/password recovery/MFA behavior, and native AI SDK streaming. The branch must pass CI, preview verification, and the owner's focused retest before Batch 2 is declared accepted or Batch 3 begins. Do not deploy to production, change DNS/secrets, apply live migrations, or provision paid infrastructure as part of this work.

@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { CheckIcon, ChevronDown, CopyIcon, FileTextIcon, PencilIcon, Share2Icon, TextSelectIcon, XIcon } from "lucide-react"
+import { CheckIcon, ChevronDown, CopyIcon, FileTextIcon, PencilIcon, Share2Icon, XIcon } from "lucide-react"
 
 import {
   type ChatMessagePart,
@@ -50,12 +50,19 @@ export function ChatMessage({
     userMessageExpansion.key === collapseExpandedMessagesKey &&
     userMessageExpansion.expanded
   const [mobileActionsOpen, setMobileActionsOpen] = React.useState(false)
+  const [promptCopied, setPromptCopied] = React.useState(false)
   const [previewAttachment, setPreviewAttachment] = React.useState<{ url: string; filename: string; mediaType: string; previewText: string } | null>(null)
   const [editing, setEditing] = React.useState(false)
   const [editText, setEditText] = React.useState("")
   const longPressTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const userTextRef = React.useRef<HTMLDivElement>(null)
   const holdTriggered = React.useRef(false)
+
+  React.useEffect(() => {
+    if (!promptCopied) return
+    const timeout = setTimeout(() => setPromptCopied(false), 2000)
+    return () => clearTimeout(timeout)
+  }, [promptCopied])
 
   React.useEffect(() => {
     if (!previewAttachment) return
@@ -90,10 +97,16 @@ export function ChatMessage({
       return privateAttachmentContext.slice(contentStart, next < 0 ? undefined : next).trim()
     }
     const fileParts = message.parts.filter((part): part is Extract<ChatMessagePart, { type: "file" }> => part.type === "file")
-    const imageParts = fileParts.filter((part) => part.mediaType.startsWith("image/"))
-    const documentParts = fileParts.filter((part) => !part.mediaType.startsWith("image/"))
+
     const isLongUserMessage = userText.length > 360
-    const copyPrompt = async () => { try { await navigator.clipboard.writeText(userText) } catch { /* Clipboard may be unavailable. */ } setMobileActionsOpen(false) }
+    const copyPrompt = async () => {
+      try {
+        await navigator.clipboard.writeText(userText)
+        setPromptCopied(true)
+        window.getSelection()?.removeAllRanges()
+      } catch { /* Clipboard may be unavailable. */ }
+      setMobileActionsOpen(false)
+    }
     const sharePrompt = async () => {
       try {
         if (navigator.share) await navigator.share({ text: userText })
@@ -105,17 +118,10 @@ export function ChatMessage({
       }
       setMobileActionsOpen(false)
     }
-    const selectPrompt = () => {
-      const node = userTextRef.current
-      if (!node) return
-      const range = document.createRange()
-      range.selectNodeContents(node)
-      const selection = window.getSelection()
-      selection?.removeAllRanges()
-      selection?.addRange(range)
-      setMobileActionsOpen(false)
-    }
-    const beginLongPress = () => {
+    const beginLongPress = (event: React.TouchEvent<HTMLDivElement>) => {
+      const target = event.target instanceof Element ? event.target : null
+      // Leave native text selection available when a user holds the message text.
+      if (target?.closest("[data-selectable-message-text]")) return
       holdTriggered.current = false
       longPressTimer.current = setTimeout(() => { holdTriggered.current = true; setMobileActionsOpen(true) }, 500)
     }
@@ -125,38 +131,61 @@ export function ChatMessage({
       <>
       <Message align="end">
         <MessageContent>
-          <div ref={userMessageRef} className="group/user-message flex w-full flex-col items-end" onTouchStart={beginLongPress} onTouchEnd={clearLongPress} onTouchMove={clearLongPress} onContextMenu={(event) => { if (window.matchMedia("(hover: none)").matches) { event.preventDefault(); setMobileActionsOpen(true) } }}>
+          <div ref={userMessageRef} className="group/user-message relative flex w-full flex-col items-end" onTouchStart={beginLongPress} onTouchEnd={clearLongPress} onTouchMove={clearLongPress} onContextMenu={(event) => { const target = event.target instanceof Element ? event.target : null; if (window.matchMedia("(hover: none)").matches && !target?.closest("[data-selectable-message-text]")) { event.preventDefault(); setMobileActionsOpen(true) } }}>
             <Bubble align="end" variant="muted" className="max-w-full">
               <BubbleContent className="max-w-full">
-                {imageParts.length > 0 && <div className="mb-2 flex flex-wrap justify-end gap-2">
-                  {imageParts.map((part, index) => <button type="button" key={`${part.filename ?? "image"}-${index}`} onClick={() => setPreviewAttachment({ url: part.url, filename: part.filename ?? "Attached image", mediaType: part.mediaType, previewText: "" })} aria-label={"Preview " + (part.filename ?? "attached image")} className="max-w-full overflow-hidden rounded-xl border border-border/60 bg-background/50 text-left">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={part.url} alt={part.filename ?? "Attached image"} className="max-h-56 max-w-full object-contain" />
-                  </button>)}
-                </div>}
-                {documentParts.length > 0 && <div className="mb-2 flex flex-col gap-1.5">
-                  {documentParts.map((part, index) => <button type="button" key={`${part.filename ?? "file"}-${index}`} onClick={() => setPreviewAttachment({ url: part.url, filename: part.filename ?? "Attached file", mediaType: part.mediaType, previewText: getAttachmentPreviewText(part.filename ?? "") })} aria-label={"Preview " + (part.filename ?? "attached file")} className="flex max-w-64 items-center gap-2 rounded-xl border border-border/70 bg-background/60 px-3 py-2 text-left hover:bg-background">
-                    <FileTextIcon className="size-4 shrink-0 text-muted-foreground" /><span className="truncate text-xs">{part.filename ?? "Attached file"}</span>
-                  </button>)}
-                </div>}
+                {fileParts.length > 0 && (
+                  <div className="mb-2 grid w-full grid-cols-2 gap-2 sm:grid-cols-3">
+                    {fileParts.map((part, index) => {
+                      const isImage = part.mediaType.startsWith("image/")
+                      const filename = part.filename ?? (isImage ? "Attached image" : "Attached file")
+                      return (
+                        <button
+                          type="button"
+                          key={`${filename}-${index}`}
+                          onClick={() => setPreviewAttachment({
+                            url: part.url,
+                            filename,
+                            mediaType: part.mediaType,
+                            previewText: isImage ? "" : getAttachmentPreviewText(filename),
+                          })}
+                          aria-label={"Preview " + filename}
+                          title={filename}
+                          className={isImage
+                            ? "group/attachment relative flex aspect-[4/3] min-w-0 items-center justify-center overflow-hidden rounded-xl border border-border/60 bg-background/70 p-1 transition-colors hover:bg-background"
+                            : "flex min-h-24 min-w-0 items-center gap-2 overflow-hidden rounded-xl border border-border/70 bg-background/60 px-3 py-2 text-left transition-colors hover:bg-background"}
+                        >
+                          {isImage ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={part.url} alt={filename} className="h-full w-full rounded-lg object-contain" />
+                          ) : (
+                            <>
+                              <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />
+                              <span className="min-w-0 flex-1 truncate text-xs">{filename}</span>
+                            </>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
                 {editing ? <form className="min-w-52 space-y-2" onSubmit={(event) => { event.preventDefault(); if (editText.trim()) { onEdit?.(editText.trim()); setEditing(false); setMobileActionsOpen(false) } }}>
                   <textarea autoFocus value={editText} onChange={(event) => setEditText(event.target.value)} className="min-h-20 w-full resize-y rounded-lg border border-border bg-background p-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Edit prompt" />
                   <div className="flex justify-end gap-2"><button type="button" onClick={() => setEditing(false)} className="rounded-lg px-2.5 py-1.5 text-xs hover:bg-background/70">Cancel</button><button type="submit" disabled={!editText.trim()} className="rounded-lg bg-primary px-2.5 py-1.5 text-xs text-primary-foreground disabled:opacity-50">Save & send</button></div>
-                </form> : userText && <div ref={userTextRef} className={isLongUserMessage && !userMessageExpanded ? "max-h-36 overflow-hidden whitespace-pre-wrap" : "whitespace-pre-wrap"}>{userText}</div>}
+                </form> : userText && <div ref={userTextRef} data-selectable-message-text className={`select-text ${isLongUserMessage && !userMessageExpanded ? "max-h-36 overflow-hidden whitespace-pre-wrap" : "whitespace-pre-wrap"}`} onCopy={() => window.setTimeout(() => window.getSelection()?.removeAllRanges(), 0)}>{userText}</div>}
                 {isLongUserMessage && !editing && <button type="button" className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-3 py-1 text-xs font-medium transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" onClick={() => { const nextExpanded = !userMessageExpanded; setUserMessageExpansion({ key: collapseExpandedMessagesKey, expanded: nextExpanded }); if (nextExpanded) requestAnimationFrame(() => requestAnimationFrame(() => userMessageRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }))) }} aria-expanded={userMessageExpanded}>{userMessageExpanded ? "Show less" : "Show more"}<ChevronDown aria-hidden="true" className={`size-3.5 transition-transform duration-200 ${userMessageExpanded ? "rotate-180" : ""}`} /></button>}
               </BubbleContent>
             </Bubble>
             {!editing && <div className="mt-1 flex items-center gap-1 text-muted-foreground opacity-0 transition-opacity group-hover/user-message:opacity-100 group-focus-within/user-message:opacity-100 max-md:hidden">
-              <button type="button" aria-label="Copy prompt" title="Copy prompt" onClick={() => void copyPrompt()} className="rounded-lg p-1.5 hover:bg-muted hover:text-foreground"><CopyIcon className="size-3.5" /></button>
+              <button type="button" aria-label={promptCopied ? "Prompt copied" : "Copy prompt"} title={promptCopied ? "Copied" : "Copy prompt"} onClick={() => void copyPrompt()} className="rounded-lg p-1.5 hover:bg-muted hover:text-foreground">{promptCopied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}</button>
               <button type="button" aria-label="Share prompt" title="Share prompt" onClick={() => void sharePrompt()} className="rounded-lg p-1.5 hover:bg-muted hover:text-foreground"><Share2Icon className="size-3.5" /></button>
               <button type="button" aria-label="Edit message" title="Edit message" onClick={() => { setEditText(userText); setEditing(true) }} className="rounded-lg p-1.5 hover:bg-muted hover:text-foreground"><PencilIcon className="size-3.5" /></button>
             </div>}
-            {mobileActionsOpen && !editing && <div role="menu" aria-label="Prompt actions" className="mt-2 flex max-w-full flex-wrap items-center gap-1 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-lg md:hidden">
-              <button type="button" role="menuitem" onClick={() => void copyPrompt()} className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs hover:bg-muted"><CopyIcon className="size-3.5" />Copy</button>
-              <button type="button" role="menuitem" onClick={selectPrompt} className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs hover:bg-muted"><TextSelectIcon className="size-3.5" />Select text</button>
+            {mobileActionsOpen && !editing && <div role="menu" aria-label="Prompt actions" className="absolute right-0 top-full z-30 mt-1 flex w-max max-w-[calc(100vw-2rem)] flex-wrap items-center gap-1.5 rounded-2xl border border-border/80 bg-popover p-2 text-popover-foreground shadow-xl md:hidden">
+              <button type="button" role="menuitem" onClick={() => void copyPrompt()} className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs hover:bg-muted">{promptCopied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}{promptCopied ? "Copied" : "Copy"}</button>
               <button type="button" role="menuitem" onClick={() => { setEditText(userText); setEditing(true); setMobileActionsOpen(false) }} className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs hover:bg-muted"><PencilIcon className="size-3.5" />Edit</button>
               <button type="button" role="menuitem" onClick={() => void sharePrompt()} className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs hover:bg-muted"><Share2Icon className="size-3.5" />Share prompt</button>
-              <button type="button" aria-label="Close prompt actions" onClick={() => setMobileActionsOpen(false)} className="rounded-lg p-2 hover:bg-muted"><CheckIcon className="size-3.5" /></button>
+              <button type="button" aria-label="Close prompt actions" onClick={() => setMobileActionsOpen(false)} className="rounded-lg p-2 hover:bg-muted"><XIcon className="size-3.5" /></button>
             </div>}
           </div>
         </MessageContent>
@@ -186,7 +215,7 @@ export function ChatMessage({
 
   return (
     <Message align="start">
-      <MessageContent>
+      <MessageContent onCopy={() => window.setTimeout(() => window.getSelection()?.removeAllRanges(), 0)}>
         {blocks.map((block, index) =>
           Array.isArray(block) ? (
             <Trace key={index}>
@@ -227,7 +256,7 @@ export function ChatMessage({
               })}
             </Trace>
           ) : (
-            <TextPart key={index} part={block} />
+            <TextPart key={index} part={block} isStreaming={isStreaming} />
           )
         )}
         {!isStreaming && <SourcesPart parts={message.parts} />}

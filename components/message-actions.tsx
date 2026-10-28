@@ -16,7 +16,7 @@ export function MessageActions({ text, onRetry }: { text: string; onRetry?: () =
   }, [copied, shared])
 
   const copy = async () => {
-    try { await navigator.clipboard.writeText(text); setCopied(true) } catch { /* Clipboard may be unavailable in insecure contexts. */ }
+    try { await navigator.clipboard.writeText(text); setCopied(true); window.getSelection()?.removeAllRanges() } catch { /* Clipboard may be unavailable in insecure contexts. */ }
   }
   const share = async () => {
     try {
