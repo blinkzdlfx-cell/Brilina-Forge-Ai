@@ -2,6 +2,8 @@
 
 import * as React from "react"
 import { type ChatUIMessage as ChatMessageType } from "@/tools"
+import { ActivityStatus } from "@/components/activity-status"
+import { BackgroundJobPanel } from "@/components/background-job-panel"
 import { useChat } from "@ai-sdk/react"
 import { lastAssistantMessageIsCompleteWithToolCalls } from "ai"
 
@@ -71,6 +73,9 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
   const [conversationsLoading, setConversationsLoading] = React.useState(true)
   const [conversationLoading, setConversationLoading] = React.useState(Boolean(initialConversationId))
   const [isPreparingAttachments, setIsPreparingAttachments] = React.useState(false)
+  const [isPreparingRequest, setIsPreparingRequest] = React.useState(false)
+  const [hasPendingSubmission, setHasPendingSubmission] = React.useState(false)
+  const [activeBackgroundJobId, setActiveBackgroundJobId] = React.useState<string | null>(null)
   const messageViewportRef = React.useRef<HTMLDivElement>(null)
   const shouldAutoFollowRef = React.useRef(true)
   const forceScrollToLatestRef = React.useRef(false)
@@ -135,6 +140,24 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
     : (models[0]?.id ?? "")
 
   const isBusy = status === "submitted" || status === "streaming"
+  React.useEffect(() => {
+    if (status !== "ready" || error || messages.length > 0) setHasPendingSubmission(false)
+  }, [status, error, messages.length])
+
+  const refreshAfterBackgroundJob = React.useCallback(async () => {
+    const id = conversationIdRef.current
+    if (!id) return
+    try {
+      const response = await fetch("/api/conversations/" + encodeURIComponent(id), { cache: "no-store" })
+      const payload = await response.json() as { messages?: ChatMessageType[] }
+      if (response.ok && payload.messages && conversationIdRef.current === id) {
+        setMessagesRef.current(payload.messages)
+        setActiveBackgroundJobId(null)
+        setConversationNotice("")
+        void refreshConversations().catch(() => undefined)
+      }
+    } catch { /* The persisted job remains available to recover on the next poll. */ }
+  }, [refreshConversations])
   const recentImageCount = React.useMemo(
     () => messages.slice(-5).reduce((count, message) => {
       if (message.role !== "user") return count
@@ -152,10 +175,20 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
   )
 
   const handleSendMessage = React.useCallback(
-    async (text: string, files: File[] = []): Promise<boolean> => {
+    async (text: string, files: File[] = [], runInBackground = false): Promise<boolean> => {
       if (sendPreparationRef.current) return false
       sendPreparationRef.current = true
+      setIsPreparingRequest(true)
+      setHasPendingSubmission(true)
       setIsPreparingAttachments(files.length > 0)
+      if (runInBackground && files.length > 0) {
+        setAttachmentError("Background tasks currently accept text prompts only. Send the task without attachments.")
+        setHasPendingSubmission(false)
+        setIsPreparingRequest(false)
+        setIsPreparingAttachments(false)
+        sendPreparationRef.current = false
+        return false
+      }
       forceScrollToLatestRef.current = true
       shouldAutoFollowRef.current = true
       let submissionQueued = false
@@ -187,11 +220,30 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
             conversationIdRef.current = targetId
             setConversationId(targetId)
             window.history.replaceState(null, "", "/c/" + encodeURIComponent(targetId))
-            await refreshConversations()
+            void refreshConversations().catch(() => undefined)
           }
         } catch (cause) {
           setAttachmentError(cause instanceof Error ? cause.message : "Could not create a conversation.")
           return false
+        }
+
+        if (runInBackground) {
+          const response = await fetch("/api/jobs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt: text, model: resolvedModel, conversationId: targetId, idempotencyKey: crypto.randomUUID() }),
+          })
+          const payload = await response.json().catch(() => null) as { job?: { id?: string }; jobId?: string; userMessage?: ChatUIMessage; error?: string } | null
+          if (payload?.userMessage) {
+            setMessagesRef.current((current) => current.some((message) => message.id === payload.userMessage?.id) ? current : [...current, payload.userMessage as ChatUIMessage])
+          }
+          const jobId = payload?.job?.id ?? payload?.jobId
+          if (jobId) setActiveBackgroundJobId(jobId)
+          if (!response.ok && !jobId) throw new Error(payload?.error ?? "Could not start the background task.")
+          if (!response.ok) setConversationNotice(payload?.error ?? "The background task could not start.")
+          submissionQueued = true
+          setHasPendingSubmission(false)
+          return true
         }
 
         // Keep the user's Writing model selected. Vision models are chosen internally for image requests.
@@ -254,7 +306,11 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
       } finally {
         sendPreparationRef.current = false
         setIsPreparingAttachments(false)
-        if (!submissionQueued) forceScrollToLatestRef.current = false
+        setIsPreparingRequest(false)
+        if (!submissionQueued) {
+          setHasPendingSubmission(false)
+          forceScrollToLatestRef.current = false
+        }
       }
     },
     [models, recentImageCount, resolvedModel, refreshConversations]
@@ -294,6 +350,9 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
       : undefined
 
   const startNewChat = React.useCallback(() => {
+    setActiveBackgroundJobId(null)
+    setHasPendingSubmission(false)
+    setIsPreparingRequest(false)
     conversationIdRef.current = null
     setConversationId(null)
     window.history.replaceState(null, "", "/")
@@ -305,6 +364,8 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
   }, [])
   const openConversation = React.useCallback(async (id: string) => {
     if (conversationIdRef.current === id && !conversationLoading) return
+    setActiveBackgroundJobId(null)
+    setHasPendingSubmission(false)
     shouldAutoFollowRef.current = true
     forceScrollToLatestRef.current = true
     conversationIdRef.current = id
@@ -335,6 +396,18 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
     }).catch((cause) => { if (!cancelled) { setConversationNotice(cause instanceof Error ? cause.message : "Could not load this conversation."); setConversationLoading(false) } })
     return () => { cancelled = true }
   }, [initialConversationId])
+  React.useEffect(() => {
+    const id = conversationId
+    if (!id) { setActiveBackgroundJobId(null); return }
+    let active = true
+    fetch("/api/jobs?conversationId=" + encodeURIComponent(id), { cache: "no-store" }).then(async (response) => {
+      if (!response.ok) return null
+      return await response.json() as { job?: { id?: string } | null }
+    }).then((payload) => {
+      if (active && conversationIdRef.current === id) setActiveBackgroundJobId(payload?.job?.id ?? null)
+    }).catch(() => undefined)
+    return () => { active = false }
+  }, [conversationId])
   React.useEffect(() => {
     // Persist partial assistant content during generation, not only after the
     // stream ends. If the browser reloads or the network drops, the latest
@@ -540,6 +613,10 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
               <CogIcon className="size-8 animate-spin text-muted-foreground" />
               <div className="w-full max-w-sm space-y-3"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-full" /><Skeleton className="h-16 w-2/3 rounded-2xl" /></div>
             </div>
+          ) : messages.length === 0 && (isBusy || isPreparingRequest || hasPendingSubmission) ? (
+            <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col justify-start px-6 pt-16" role="status" aria-label="Preparing response">
+              <ActivityStatus label={isPreparingRequest ? "Preparing" : "Thinking"} />
+            </div>
           ) : messages.length === 0 ? (
             <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-6">
               <Empty>
@@ -605,22 +682,12 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
                         />
                       </MessageScrollerItem>
                     ))}
-                    {status === "submitted" && (
+                    {isBusy && lastMessage?.role === "user" && (
                       <MessageScrollerItem messageId="thinking">
-                        <Message>
-                          <MessageContent>
-                            <Trace>
-                              <TraceLine status="running">
-                                <TraceIcon>
-                                  <StatusIcon status="running" />
-                                </TraceIcon>
-                                <TraceTitle>Thinking</TraceTitle>
-                              </TraceLine>
-                            </Trace>
-                          </MessageContent>
-                        </Message>
+                        <Message><MessageContent><ActivityStatus label={status === "submitted" ? "Thinking" : "Working"} /></MessageContent></Message>
                       </MessageScrollerItem>
                     )}
+                    {activeBackgroundJobId && <MessageScrollerItem messageId={"background-job-" + activeBackgroundJobId}><BackgroundJobPanel jobId={activeBackgroundJobId} onCompleted={refreshAfterBackgroundJob} /></MessageScrollerItem>}
                   </MessageScrollerContent>
                   {pendingQuestion && (
                     <QuestionCard
