@@ -149,6 +149,9 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
         setMessagesRef.current(payload.messages)
         setActiveBackgroundJobId(null)
         setConversationNotice("")
+        try {
+          await fetch("/api/conversations/" + encodeURIComponent(id) + "/title", { method: "POST" })
+        } catch { /* The next completed refresh can retry title generation. */ }
         void refreshConversations().catch(() => undefined)
       }
     } catch { /* The persisted job remains available to recover on the next poll. */ }
@@ -206,9 +209,9 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
         let targetId = conversationIdRef.current
         try {
           if (!targetId) {
-            const firstFilename = files[0]?.name
-            const title = text.trim().slice(0, 64) || firstFilename?.slice(0, 64) || "New chat"
-            const created = await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title }) })
+            // Keep the placeholder until GLM 4.7 Flash creates a title from
+            // the completed first exchange. Never derive titles from raw prompt text.
+            const created = await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "New chat" }) })
             const payload = await created.json() as { conversation?: { id: string } }
             if (!created.ok || !payload.conversation?.id) throw new Error("Could not create a conversation. Try again.")
             targetId = payload.conversation.id
@@ -341,6 +344,15 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
       : firstUserFile?.type === "file"
         ? firstUserFile.filename ?? "Attachment chat"
         : "New chat"
+  const activeConversationTitle = conversationId
+    ? conversations.find((item) => item.id === conversationId)?.title ?? conversationTitle
+    : "Brilina Forge AI"
+
+  React.useEffect(() => {
+    document.title = activeConversationTitle === "Brilina Forge AI"
+      ? "Brilina Forge AI"
+      : activeConversationTitle + " · Brilina Forge AI"
+  }, [activeConversationTitle])
 
   const pendingQuestion =
     lastMessage?.role === "assistant"
@@ -439,6 +451,12 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
         }
         if (status === "ready") {
           await refreshConversations()
+          // The title endpoint only changes conversations still named "New chat".
+          // It uses GLM 4.7 Flash and cannot overwrite a manual rename.
+          try {
+            const titleResponse = await fetch("/api/conversations/" + encodeURIComponent(conversationId) + "/title", { method: "POST" })
+            if (titleResponse.ok) await refreshConversations()
+          } catch { /* Chat history is saved even if title generation is temporarily unavailable. */ }
           // Refresh version counts after a regeneration without resetting the
           // UI on every streamed token.
           const historyResponse = await fetch("/api/conversations/" + encodeURIComponent(conversationId))
