@@ -7,6 +7,7 @@ import { getTools } from "../../tools"
 type JobRecord = {
   id: string
   user_id: string
+  conversation_id: string | null
   status: string
   progress: number
   stage: string
@@ -55,7 +56,7 @@ export default async function processForgeJob(request: Request) {
     auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
   })
   const { data: jobData, error: jobError } = await admin.from("background_jobs")
-    .select("id,user_id,status,progress,stage,input,attempt,max_attempts,updated_at")
+    .select("id,user_id,conversation_id,status,progress,stage,input,attempt,max_attempts,updated_at")
     .eq("id", jobId).maybeSingle()
   if (jobError || !jobData) return json("job_not_found", 404)
   const job = jobData as JobRecord
@@ -111,6 +112,30 @@ export default async function processForgeJob(request: Request) {
 
     await updateProgress(92, "finalizing", "Preparing and saving the completed result.")
     const text = await result.text
+    if (job.conversation_id) {
+      const assistantClientId = "background-job-" + job.id
+      const { data: existingAssistant } = await admin.from("messages").select("id")
+        .eq("conversation_id", job.conversation_id).eq("client_message_id", assistantClientId).maybeSingle()
+      if (existingAssistant) {
+        const { error: assistantUpdateError } = await admin.from("messages").update({
+          parts: [{ type: "text", text }], status: "complete", is_active_version: true,
+        }).eq("id", existingAssistant.id).eq("conversation_id", job.conversation_id)
+        if (assistantUpdateError) throw new Error("The completed response could not be saved to chat history.")
+      } else {
+        const { data: latestRows, error: latestError } = await admin.from("messages").select("sequence_number")
+          .eq("conversation_id", job.conversation_id).order("sequence_number", { ascending: false }).limit(1)
+        if (latestError) throw new Error("Could not prepare the completed response for chat history.")
+        const userMessageId = typeof job.input?.userMessageId === "string" ? job.input.userMessageId : null
+        const { error: assistantInsertError } = await admin.from("messages").insert({
+          id: crypto.randomUUID(), conversation_id: job.conversation_id, role: "assistant",
+          parts: [{ type: "text", text }], sequence_number: Number(latestRows?.[0]?.sequence_number ?? -1) + 1,
+          status: "complete", client_message_id: assistantClientId,
+          turn_message_id: userMessageId, version_number: 1, is_active_version: true,
+        })
+        if (assistantInsertError) throw new Error("The completed response could not be saved to chat history.")
+      }
+      await admin.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", job.conversation_id).eq("user_id", job.user_id)
+    }
     const { error: saveError } = await admin.from("background_jobs").update({
       status: "completed",
       progress: 100,
