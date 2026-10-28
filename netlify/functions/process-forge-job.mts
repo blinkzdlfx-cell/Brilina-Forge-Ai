@@ -15,6 +15,7 @@ type JobRecord = {
   input: { prompt?: string; model?: string; userMessageId?: string }
   attempt: number
   max_attempts: number
+  started_at: string | null
   updated_at: string
 }
 
@@ -57,7 +58,7 @@ export default async function processForgeJob(request: Request) {
     auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
   })
   const { data: jobData, error: jobError } = await admin.from("background_jobs")
-    .select("id,user_id,conversation_id,status,progress,stage,input,attempt,max_attempts,updated_at")
+    .select("id,user_id,conversation_id,status,progress,stage,input,attempt,max_attempts,started_at,updated_at")
     .eq("id", jobId).maybeSingle()
   if (jobError || !jobData) return json("job_not_found", 404)
   const job = jobData as JobRecord
