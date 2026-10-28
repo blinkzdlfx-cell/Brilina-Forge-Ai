@@ -46,6 +46,8 @@ export function ChatSidebar(props: ChatSidebarProps) {
   const [renameValue, setRenameValue] = React.useState("")
   const [search, setSearch] = React.useState("")
   const [avatarUrl, setAvatarUrl] = React.useState("")
+  const [avatarPreviewUrl, setAvatarPreviewUrl] = React.useState("")
+  const [avatarSelectedFile, setAvatarSelectedFile] = React.useState<File | null>(null)
   const [avatarBusy, setAvatarBusy] = React.useState(false)
   const [avatarError, setAvatarError] = React.useState("")
   const [profileEmail, setProfileEmail] = React.useState("")
@@ -55,7 +57,11 @@ export function ChatSidebar(props: ChatSidebarProps) {
   const regular = visible.filter((c) => !c.is_pinned || Boolean(c.archived_at))
   const sorted = [...visible].sort((a,b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
   const searchResults = sorted.filter((item) => item.title.toLowerCase().includes(search.toLowerCase()))
-  const closeModal = React.useCallback(() => { setModal(null); setSelected(null); setAvatarError("") }, [])
+  const closeModal = React.useCallback(() => { setModal(null); setSelected(null); setAvatarError(""); setAvatarSelectedFile(null); setAvatarPreviewUrl("") }, [])
+  React.useEffect(() => {
+    if (!avatarPreviewUrl.startsWith("blob:")) return
+    return () => URL.revokeObjectURL(avatarPreviewUrl)
+  }, [avatarPreviewUrl])
   React.useEffect(() => {
     if (!menuFor && !recentMenuOpen) return
     const onPointerDown = (event: PointerEvent) => {
@@ -85,9 +91,22 @@ export function ChatSidebar(props: ChatSidebarProps) {
       if (response.ok) { setAvatarUrl(result.url ?? ""); setProfileEmail(result.email ?? "") }
     } catch { /* Settings remain available without profile metadata. */ }
   }
-  const uploadAvatar = async (file?: File) => {
+  const selectAvatar = (file?: File) => {
     if (!file) return
-    if (!file.type.startsWith("image/") || file.size > 2 * 1024 * 1024) { setAvatarError("Choose an image up to 2 MiB."); return }
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 2 * 1024 * 1024) {
+      setAvatarError("Choose a PNG, JPEG, or WebP image up to 2 MiB.")
+      if (avatarInput.current) avatarInput.current.value = ""
+      return
+    }
+    setAvatarError("")
+    setAvatarSelectedFile(file)
+    setAvatarPreviewUrl(URL.createObjectURL(file))
+    if (avatarInput.current) avatarInput.current.value = ""
+  }
+  const cancelAvatarSelection = () => { setAvatarSelectedFile(null); setAvatarPreviewUrl(""); setAvatarError("") }
+  const uploadAvatar = async () => {
+    const file = avatarSelectedFile
+    if (!file) return
     setAvatarBusy(true); setAvatarError("")
     try {
       const form = new FormData(); form.set("avatar", file)
@@ -95,8 +114,10 @@ export function ChatSidebar(props: ChatSidebarProps) {
       const result = await response.json() as { url?: string; error?: string }
       if (!response.ok || !result.url) throw new Error(result.error ?? "Could not upload profile photo.")
       setAvatarUrl(result.url)
+      setAvatarSelectedFile(null)
+      setAvatarPreviewUrl("")
     } catch (error) { setAvatarError(error instanceof Error ? error.message : "Could not upload profile photo.") }
-    finally { setAvatarBusy(false); if (avatarInput.current) avatarInput.current.value = "" }
+    finally { setAvatarBusy(false) }
   }
   const renderConversation = (item: SidebarConversation) => (
     <SidebarMenuItem key={item.id} className="group/item">
@@ -130,10 +151,10 @@ export function ChatSidebar(props: ChatSidebarProps) {
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel className="flex items-center justify-between"><span>{props.showArchived ? "Archived" : "Recent"}</span><div className="relative group-data-[collapsible=icon]:hidden"><button type="button" data-recent-options-trigger aria-label="Recent section options" title="Options" className="rounded p-1 text-muted-foreground hover:text-foreground" onClick={() => setRecentMenuOpen((open) => !open)}><EllipsisIcon className="size-3.5" /></button>{recentMenuOpen && <div role="menu" data-recent-options-popup className="absolute right-0 top-full z-50 mt-1 min-w-32 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl"><button type="button" role="menuitem" onClick={() => { props.onToggleArchived(); setRecentMenuOpen(false) }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-muted">{props.showArchived ? <MessageSquareIcon className="size-4" /> : <ArchiveIcon className="size-4" />}{props.showArchived ? "Recent" : "Archive"}</button></div>}</div></SidebarGroupLabel>
+          <SidebarGroupLabel className="flex items-center justify-between"><span>{props.showArchived ? "Archived" : pinned.length > 0 ? "Pinned" : "Recent"}</span><div className="relative group-data-[collapsible=icon]:hidden"><button type="button" data-recent-options-trigger aria-label="Recent section options" title="Options" className="rounded p-1 text-muted-foreground hover:text-foreground" onClick={() => setRecentMenuOpen((open) => !open)}><EllipsisIcon className="size-3.5" /></button>{recentMenuOpen && <div role="menu" data-recent-options-popup className="absolute right-0 top-full z-50 mt-1 min-w-32 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl"><button type="button" role="menuitem" onClick={() => { props.onToggleArchived(); setRecentMenuOpen(false) }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-muted">{props.showArchived ? <MessageSquareIcon className="size-4" /> : <ArchiveIcon className="size-4" />}{props.showArchived ? "Recent" : "Archive"}</button></div>}</div></SidebarGroupLabel>
           <SidebarMenu>
             {props.isLoading ? Array.from({ length: 5 }, (_, i) => <SidebarMenuItem key={i} className="px-2 py-1 group-data-[collapsible=icon]:hidden"><div className="flex items-center gap-2"><Skeleton className="size-4 rounded-md" /><Skeleton className={`h-4 ${i % 2 ? "w-2/3" : "w-4/5"}`} /></div></SidebarMenuItem>) : <>
-              {!props.showArchived && pinned.length > 0 && <><p className="px-3 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground group-data-[collapsible=icon]:hidden">Pinned</p>{pinned.map(renderConversation)}<p className="px-3 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground group-data-[collapsible=icon]:hidden">Recent</p></>}
+              {!props.showArchived && pinned.length > 0 && <>{pinned.map(renderConversation)}<p className="px-3 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground group-data-[collapsible=icon]:hidden">Recent</p></>}
               {(props.showArchived ? visible : regular).map(renderConversation)}
               {visible.length === 0 && <p className="px-3 py-2 text-sm text-muted-foreground group-data-[collapsible=icon]:hidden">{props.showArchived ? "No archived conversations." : props.hasConversation ? props.conversationTitle : "Your conversations will appear here."}</p>}
             </>}
@@ -172,9 +193,9 @@ export function ChatSidebar(props: ChatSidebarProps) {
     {modal === "settings" && <StyledModal title="Profile and settings" onClose={closeModal}>
       <div className="flex items-center gap-4">
         <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted">
-          {avatarUrl ? <img src={avatarUrl} alt="Profile photo" className="size-full object-cover" /> : <SettingsIcon className="size-6 text-muted-foreground" />}
+          {(avatarPreviewUrl || avatarUrl) ? <img src={avatarPreviewUrl || avatarUrl} alt="Profile photo preview" className="size-full object-cover" /> : <SettingsIcon className="size-6 text-muted-foreground" />}
         </div>
-        <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{profileEmail || "Your account"}</p><p className="mt-1 text-xs text-muted-foreground">Profile photo (up to 2 MiB)</p><input ref={avatarInput} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => void uploadAvatar(e.currentTarget.files?.[0])} /><button type="button" disabled={avatarBusy} onClick={() => avatarInput.current?.click()} className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50"><UploadIcon className="size-3.5" />{avatarBusy ? "Uploading…" : "Upload photo"}</button></div>
+        <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{profileEmail || "Your account"}</p><p className="mt-1 text-xs text-muted-foreground">Profile photo (up to 2 MiB)</p><input ref={avatarInput} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => selectAvatar(e.currentTarget.files?.[0])} />{avatarSelectedFile ? <div className="mt-2 flex flex-wrap gap-2"><button type="button" disabled={avatarBusy} onClick={() => avatarInput.current?.click()} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50"><UploadIcon className="size-3.5" />Choose another</button><button type="button" disabled={avatarBusy} onClick={cancelAvatarSelection} className="rounded-lg px-3 py-1.5 text-xs hover:bg-muted">Cancel</button><button type="button" disabled={avatarBusy} onClick={() => void uploadAvatar()} className="rounded-lg bg-primary px-3 py-1.5 text-xs text-primary-foreground disabled:opacity-50">{avatarBusy ? "Uploading…" : "Save photo"}</button></div> : <button type="button" disabled={avatarBusy} onClick={() => avatarInput.current?.click()} className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50"><UploadIcon className="size-3.5" />Upload photo</button>}</div>
       </div>
       {avatarError && <p role="alert" className="mt-3 text-sm text-destructive">{avatarError}</p>}
       <div className="mt-5 border-t border-border pt-3"><button type="button" onClick={() => { closeModal(); router.push("/change-password") }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-muted"><SettingsIcon className="size-4" />Settings and password</button><button type="button" onClick={async () => { closeModal(); await fetch("/api/auth/sign-out", { method: "POST" }).catch(() => undefined); router.replace("/login"); router.refresh() }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm text-destructive hover:bg-destructive/10"><LogOutIcon className="size-4" />Log out</button></div>
