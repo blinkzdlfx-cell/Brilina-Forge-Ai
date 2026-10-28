@@ -33,10 +33,19 @@ export async function POST(request: Request) {
 
   try {
     const redis = await getRedisClient()
-    if (!redis) return Response.json({ error: "stream_recovery_not_configured" }, { status: 503 })
-    await redis.set("forge:stop:" + conversation.active_stream_id, "1", { EX: 120 })
-    return Response.json({ success: true, stopped: true })
+    if (redis) {
+      await redis.set("forge:stop:" + conversation.active_stream_id, "1", { EX: 120 })
+      return Response.json({ success: true, stopped: true })
+    }
   } catch {
-    return Response.json({ error: "could_not_stop_generation" }, { status: 503 })
+    // The Supabase status fallback below still lets the producer observe Stop.
   }
+
+  const { error: stopError } = await auth.supabase.from("conversations")
+    .update({ active_generation_status: "stopped" })
+    .eq("id", body.conversationId)
+    .eq("user_id", auth.user.id)
+    .eq("active_stream_id", conversation.active_stream_id)
+  if (stopError) return Response.json({ error: "could_not_stop_generation" }, { status: 503 })
+  return Response.json({ success: true, stopped: true, fallback: true })
 }
