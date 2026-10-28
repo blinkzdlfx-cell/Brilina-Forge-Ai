@@ -74,6 +74,8 @@ test("new-chat submissions use the latest chat instance and initial loading cann
   assert.match(chat, /const sendMessageRef = React\.useRef\(sendMessage\)/)
   assert.match(chat, /sendMessageRef\.current\(\{ text \}/)
   assert.match(chat, /conversationIdRef\.current !== initialConversationId/)
+  assert.match(chat, /shouldPersistMessagesRef = React\.useRef\(false\)/)
+  assert.match(chat, /!shouldPersistMessagesRef\.current/)
 })
 
 test("long AI responses use Vercel Fluid Compute duration", async () => {
