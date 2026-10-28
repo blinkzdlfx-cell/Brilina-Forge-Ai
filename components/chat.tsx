@@ -346,7 +346,24 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
         })) }), signal: controller.signal,
       }).then(async (response) => {
         if (!response.ok) { setConversationNotice("Conversation history could not be saved. An attachment may need secure upload first."); return }
-        if (status === "ready") await refreshConversations()
+        if (status === "ready") {
+          await refreshConversations()
+          // Refresh version counts after a regeneration without resetting the
+          // UI on every streamed token.
+          const historyResponse = await fetch("/api/conversations/" + encodeURIComponent(conversationId))
+          const history = await historyResponse.json().catch(() => null) as { messages?: Array<ChatMessageType & { responseVersion?: { current: number; total: number } }> } | null
+          if (historyResponse.ok && history?.messages) {
+            const currentKey = messages.map((message) => {
+              const version = (message as ChatMessageType & { responseVersion?: { current: number; total: number } }).responseVersion
+              return message.id + ":" + (version ? version.current + "/" + version.total : "")
+            }).join("|")
+            const storedKey = history.messages.map((message) => {
+              const version = message.responseVersion
+              return message.id + ":" + (version ? version.current + "/" + version.total : "")
+            }).join("|")
+            if (currentKey !== storedKey) setMessages(history.messages)
+          }
+        }
       }).catch(() => undefined)
     }, status === "ready" ? 300 : 700)
     return () => { clearTimeout(timer); controller.abort() }
@@ -401,6 +418,26 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
     }
     stop()
   }, [stop])
+
+  const handleChangeResponseVersion = React.useCallback(async (turnMessageId: string, versionNumber: number) => {
+    const id = conversationIdRef.current
+    if (!id) return
+    const response = await fetch("/api/conversations/" + encodeURIComponent(id) + "/versions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ turnMessageId, versionNumber }),
+    })
+    if (!response.ok) {
+      setConversationNotice("Could not switch response version.")
+      return
+    }
+    const history = await fetch("/api/conversations/" + encodeURIComponent(id))
+    const payload = await history.json() as { messages?: ChatMessageType[] }
+    if (history.ok && payload.messages) {
+      setMessages(payload.messages)
+      setConversationNotice("")
+    }
+  }, [setMessages])
 
   const updateConversation = React.useCallback(async (id: string, patch: Record<string, unknown>) => {
     const response = await fetch("/api/conversations/" + encodeURIComponent(id), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) })
@@ -487,7 +524,26 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
                       >
                         <ChatMessage
                           message={message}
-                          onEdit={(editedText) => { setMessages((current) => current.slice(0, messages.findIndex((item) => item.id === message.id))); window.setTimeout(() => void handleSendMessage(editedText), 0) }}
+                          onEdit={(editedText) => {
+                          const editedConversationId = conversationIdRef.current
+                          void (async () => {
+                            if (editedConversationId) {
+                              const branchResponse = await fetch("/api/conversations/" + encodeURIComponent(editedConversationId) + "/branch", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ messageId: message.id }),
+                              })
+                              if (!branchResponse.ok) {
+                                setConversationNotice("Could not create an edited branch. Please retry.")
+                                return
+                              }
+                            }
+                            setMessages((current) => current.slice(0, current.findIndex((item) => item.id === message.id)))
+                            window.setTimeout(() => void handleSendMessage(editedText), 0)
+                          })()
+                        }}
+                        responseVersion={(message as ChatMessageType & { responseVersion?: { turnMessageId: string; current: number; total: number } }).responseVersion}
+                        onVersionChange={handleChangeResponseVersion}
                           collapseExpandedMessagesKey={collapseExpandedMessagesKey}
                           isStreaming={
                             isBusy && message.id === lastMessage?.id
