@@ -364,7 +364,7 @@ export function Chat({ models, initialConversationId = null }: { models: Gateway
           }
         }
       }).catch(() => undefined)
-    }, status === "ready" ? 300 : 700)
+    }, status === "ready" ? 300 : 1000)
     return () => { clearTimeout(timer); controller.abort() }
   }, [status, conversationId, messages, error, refreshConversations])
   React.useEffect(() => {
