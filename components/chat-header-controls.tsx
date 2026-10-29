@@ -55,7 +55,7 @@ export function ChatHeaderControls({ onNewChat, models, model, onModelChange, ac
       </div>
       <div className="flex shrink-0 items-center gap-0.5 rounded-full border border-border/70 bg-background/85 p-1 shadow-lg backdrop-blur-xl dark:bg-zinc-900/80">
         <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full hover:bg-muted dark:hover:bg-white/10 sm:size-9" onClick={onNewChat} aria-label="New chat" title="New chat"><SquarePen className="size-4" /></Button>
-        <Button ref={menuTriggerRef} type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full hover:bg-muted dark:hover:bg-white/10 sm:size-9" onClick={() => setMenuOpen((open) => !open)} aria-label="More options" title="More options" aria-haspopup="menu" aria-expanded={menuOpen}><Ellipsis className="size-4" /></Button>
+        <Button ref={menuTriggerRef} type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full hover:bg-muted dark:hover:bg-white/10 sm:size-9" disabled={!activeConversation} onClick={() => setMenuOpen((open) => !open)} aria-label="More options" title="More options" aria-haspopup="menu" aria-expanded={menuOpen}><Ellipsis className="size-4" /></Button>
       </div>
       {menuOpen && <div ref={menuPopupRef} role="menu" aria-label="More options" className="absolute right-0 top-full z-50 mt-2 min-w-48 rounded-2xl border border-border/70 bg-popover/95 p-2 shadow-xl backdrop-blur-xl">
         {activeConversation && <>
@@ -63,7 +63,6 @@ export function ChatHeaderControls({ onNewChat, models, model, onModelChange, ac
           {menuItem(activeConversation.is_pinned ? "Unpin" : "Pin", <PinIcon className="size-4" />, () => onPinConversation?.())}
           {menuItem("Archive", <ArchiveIcon className="size-4" />, () => onArchiveConversation?.())}
           {menuItem("Delete", <Trash2Icon className="size-4" />, () => setModal("delete"), true)}
-          <div className="my-1 border-t border-border" />
         </>}
       </div>}
     </div>

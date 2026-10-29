@@ -6,6 +6,7 @@ import { ActivityStatus } from "@/components/activity-status"
 import { BackgroundJobPanel } from "@/components/background-job-panel"
 import { useChat } from "@ai-sdk/react"
 import { lastAssistantMessageIsCompleteWithToolCalls } from "ai"
+import { shouldAutoSendAfterToolAnswer } from "@/lib/auto-send.mjs"
 
 import { type GatewayModel } from "@/lib/models"
 import { CogIcon } from "lucide-react"
@@ -47,7 +48,7 @@ function getWelcomeGreeting(userName?: string | null) {
   const hour = new Date().getHours()
   const group = hour < 12 ? WELCOME_GREETINGS.morning : hour < 17 ? WELCOME_GREETINGS.afternoon : WELCOME_GREETINGS.evening
   const greeting = group[Math.floor(Math.random() * group.length)]
-  const firstName = userName?.trim().split(/\\s+/)[0]
+  const firstName = userName?.trim().split(/\s+/)[0]
   return firstName && Math.random() < 0.35 ? `${greeting}, ${firstName}` : greeting
 }
 
@@ -139,9 +140,12 @@ export function Chat({ models, initialConversationId = null, userName }: { model
     // Keep each conversation's UI state separate, including in-flight streams.
     id: conversationId ?? undefined,
     resume: Boolean(conversationId),
-    // Resume the conversation automatically once the user has answered the
-    // ask_user questionnaire.
-    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+    // Resume automatically only once the user has answered an ask_user
+    // question. Server-side tools (web search, GitHub) finish inside the same
+    // request, and re-sending after them could start runaway agent loops.
+    sendAutomaticallyWhen: ({ messages: current }) =>
+      lastAssistantMessageIsCompleteWithToolCalls({ messages: current }) &&
+      shouldAutoSendAfterToolAnswer(current),
     onError: () => setHasPendingSubmission(false),
   })
   // A new conversation changes the useChat instance. Async send preparation can
@@ -365,7 +369,7 @@ export function Chat({ models, initialConversationId = null, userName }: { model
   const readableErrorMessage =
     /paid plan|requires payment|billing|prepaid.*credit|insufficient.*credit|not entitled/i.test(rawErrorMessage)
       ? "This Cloudflare model requires Workers Paid or prepaid AI Gateway credits. Choose GLM 4.7 Flash or GPT OSS 120B on your current access, or enable billing for this model."
-      : /<!doctype html|<html[\\s>]|cloudflare.*1102|worker exceeded (?:resource|cpu) limits/i.test(rawErrorMessage)
+      : /<!doctype html|<html[\s>]|cloudflare.*1102|worker exceeded (?:resource|cpu) limits/i.test(rawErrorMessage)
         ? "The chat service reached its resource limit while preparing this request. Try again with a shorter recent conversation."
         : rawErrorMessage.length > 500
           ? `${rawErrorMessage.slice(0, 500)}…`

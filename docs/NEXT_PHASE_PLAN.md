@@ -21,7 +21,7 @@ Vercel is the primary production application runtime. The existing Cloudflare Wo
 - **Vision/documents:** retain configured Groq/Cloudflare vision and Gemini PDF extraction where valid. Keep provider credentials server-side and verify provider limits before changing model IDs or file limits.
 - **Voice:** retain the current authenticated Cloudflare Workers AI Whisper API flow and ten-minute recording-session limit. Improve reliability without replacing the provider by default.
 - **Email:** inspect current live configuration before any Resend migration. Existing password-recovery behavior is accepted; do not redesign it without a reproducible defect.
-- **No image generation. No GitHub integration in this scope.** Do not add a new database, cache, queue, workflow engine, hosting platform, or dependency unless a measured need and the applicable approval gate justify it.
+- **No image generation.** Do not add a new database, cache, queue, workflow engine, hosting platform, or dependency unless a measured need and the applicable approval gate justify it. The user separately approved a bounded GitHub coding plugin on 2026-10-29; it uses an additive migration that remains unapplied pending environment-specific approval.
 
 Official Vercel documentation currently describes a 4.5 MB request/response payload limit for Functions and plan-dependent duration/usage limits. The repository has server upload routes with 10 MiB file and 20 MiB audio limits, so those application-level limits do not guarantee that Vercel will accept those uploads. Move large upload bytes directly to private Supabase Storage through an authenticated upload flow, or use a smaller request path; do not rely on oversized uploads passing through a Vercel Function. Confirm the current Vercel plan settings and actual deployed behavior before treating any duration allowance as guaranteed.
 
@@ -80,21 +80,21 @@ Acceptance:
 - Conversation history and file access remain user-isolated.
 - Production schema, data, secrets, and DNS remain unchanged unless separately approved.
 
-Implementation and current acceptance evidence (updated 2026-10-28):
+Implementation and current acceptance evidence (updated 2026-10-29):
 - PR #33 merged direct-to-private-Supabase-Storage uploads and the approved `0007_private_audio_storage.sql` migration. No schema change is part of the current UI follow-up.
 - PR #36 merged chat/sidebar interaction improvements at `d9763d0c84b02984fab6006045b7815b46369404`.
-- PR #37 merged Batch 2 follow-up fixes at `85c1b76ceb427743e7ecebd3ad035fa0eccb1220`. The owner manually tested the implemented flows and reports that authentication, profile/settings, uploads, sidebar actions, message actions, conversation refresh/history, and most other acceptance items work.
-- Remaining owner-reported polish gaps: AI text appears buffered/uneven; mixed images and documents need a consistent gallery with independent previews; restored history must settle at the end of the latest response; profile photo needs a pre-upload preview; native partial-text selection/copy should replace the custom “Select text” action and clear selection after copying; user-message copy needs checkmark feedback; pinned conversations should be the first sidebar section when any are pinned.
-- Follow-up branch `fix/streaming-attachment-layout-message-selection` addresses those remaining presentation issues. It preserves AI SDK native streaming, disables intermediary response buffering, skips syntax highlighting during active token updates, unifies the attachment gallery, adds profile photo preview, refines text selection/copy feedback, prioritizes pinned chats, and keeps history at the bottom while content layout settles.
-- The new follow-up has not yet passed CI/preview/manual acceptance. Vercel preview availability was previously blocked by a build-rate limit. Do not claim deployment or live verification until the status is checked again.
+- Batch 2 final polish is present in the current source: native streaming headers, responsive mixed attachment previews, restored-history scroll handling, profile-photo preview, native selection/copy feedback, and pinned-first ordering. Contract coverage exists in tests/streaming-attachment-polish.test.mjs; the full local suite passed 75/75 on 2026-10-29 after fixing a CRLF-sensitive workflow assertion. Preview deployment and focused owner browser retest remain unverified acceptance gates.
+- Source review at baseline 1912da5 shows several previously reported polish items implemented: native streaming headers, mixed attachment previews, attachment-only explanatory context, a same-conversation no-refetch guard, smart auto-follow, profile preview, selection/copy feedback, and pinned-first ordering. Contract tests cover several of these behaviors. Popover and mobile/desktop interactions still need focused browser acceptance.
+- The follow-up behavior is present in the current mainline source; the prior note identifying the polish branch as unmerged is historical and no longer reflects this checkout. Verify live preview and focused owner retest before marking the acceptance gate complete.
+- Current local verification on 2026-10-29: tests 75/75, typecheck passed, lint exited 0 with three warnings. The native Next.js build was stopped after about seven minutes without further output; it is unverified. CI, preview, and owner browser acceptance are not available from this session.
 
 ### Batch 1 and Batch 2 acceptance ledger
 
 | Area | Current evidence | Remaining gate |
 |---|---|---|
-| Batch 1 streaming/runtime foundation | Native AI SDK UI-message streaming is present; owner reports response generation works but the visual stream is not acceptable | New follow-up CI and preview; verify text visibly updates before generation finishes, no intermediary buffering, stop/error behavior, and manual scroll pause/resume |
-| Batch 2 persistence/private upload | Direct private Storage flow and approved migration verified; owner confirms upload and refresh/history work | Verify mixed image/document gallery, independent previews, failed-upload retry, and scroll-to-latest after history restoration |
-| Chat/sidebar interaction work included in Batch 2 acceptance | PR #37 merged; owner reports almost all previously tested interactions work | New follow-up CI/preview; test avatar preview, native selection/copy feedback, pinned/recent ordering, mobile/desktop and restored-history scroll |
+| Batch 1 streaming/runtime foundation | Native AI SDK UI-message streaming and no-buffering response headers are present; local contract tests pass | Preview/browser verification of early token delivery, stop/error behavior, and manual scroll pause/resume remains outstanding |
+| Batch 2 persistence/private upload | Direct private Storage flow and approved migration remain in source; local contract tests cover ownership, upload intents, persistence, and scroll behavior | Live preview acceptance for image/document gallery, independent previews, failed-upload retry, and restored-history behavior remains outstanding |
+| Chat/sidebar interaction work included in Batch 2 acceptance | Source includes profile preview, native selection/copy feedback, and pinned/recent ordering; contract tests pass | Preview/browser retest on mobile and desktop remains outstanding |
 
 ### Batch 3 — Provider workflows: search, transcription, vision and documents
 
@@ -167,10 +167,10 @@ When documents conflict, preserve the user's current approved architecture and v
 
 **Merged Batch 2 follow-up:** PR #37, merge commit `85c1b76ceb427743e7ecebd3ad035fa0eccb1220`. The owner tested the merged behavior and reports that nearly all planned interactions work.
 
-**Open polish branch:** `fix/streaming-attachment-layout-message-selection` (not merged).
+**Source status:** The polish implementation is present in the current main baseline (1912da5), with contract coverage in tests/streaming-attachment-polish.test.mjs. The prior open-branch status was not reconciled when these changes reached main. Preview/browser acceptance remains outstanding.
 
-The remaining work targets native AI SDK streaming presentation and explicit no-buffering response headers; lightweight Markdown/code rendering while tokens arrive; a responsive mixed attachment gallery with separate image/document preview dialogs; scroll-to-latest after history restoration and content layout changes; profile-photo preview before upload; native partial text selection; clearing selection after copy; copy-check feedback; and pinned-first sidebar headings.
+The source now includes native AI SDK streaming headers, lightweight Markdown while tokens arrive, a responsive mixed attachment gallery with separate previews, scroll-to-latest after restoration and layout changes, profile-photo preview, native text selection and copy feedback, and pinned-first ordering. Confirm these behaviors in a preview and complete the focused owner retest before closing the gate.
 
 Preserve private storage, owner checks, MIME and size limits, invite-only access, native AI SDK UI-message streaming, and all accepted auth/recovery behavior. No production deployment, DNS/secret change, paid infrastructure, or live Supabase migration is included.
 
-**Gate before Batch 3:** new branch CI passes, a preview is available and verified, and the owner retests streaming responsiveness, scroll pause/resume and restore-to-bottom, mixed attachment layouts and independent previews, avatar preview/save/cancel, message selection/copy feedback, and pinned/recent ordering. Update the ledger with actual evidence before declaring Batch 2 accepted.
+**Gate before Batch 3:** Local source contract tests pass (75/75 on 2026-10-29). A preview deployment and focused owner retest of streaming responsiveness, scroll pause/resume and restore-to-bottom, mixed attachment layouts and independent previews, avatar preview/save/cancel, message selection/copy feedback, and pinned/recent ordering are still required. Record that evidence before declaring Batch 2 accepted.

@@ -10,6 +10,7 @@ A streaming AI assistant built with Next.js, the AI SDK, and shadcn components. 
 - **Web search:** Tavily's independent search API. The server bounds response bodies, retries one transient failure within the timeout budget, deduplicates normalized HTTPS source URLs, truncates excerpts, marks partial results, and returns safe errors.
 - **Voice input:** Authenticated users receive a server-created recording session before the browser records audio. The server enforces a maximum 10-minute session, and the browser automatically stops and transcribes at the limit. Stop inserts the transcript without sending; Send transcribes and sends through the existing chat flow; X cancels. No recording timer is displayed. Failed audio can be retried once during the current page session.
 - **Citations:** The assistant is instructed to cite web-supported claims with Markdown links to the exact URLs returned by Tavily.
+- **GitHub coding agent:** When GitHub is connected and repositories are allowlisted, chat can inspect code, work on `forge/*` branches, create commits, open PRs, and inspect CI. The agent cannot merge PRs or dispatch workflows; see [GitHub agent setup and safety](docs/GITHUB_AGENT.md). Its additive database migration requires separate approval before applying to any live environment.
 - **Existing UI:** The responsive chat UI, streamed messages, model selector, GitHub repository lookup, and interactive question tool are retained.
 
 Provider credentials are server-side only. Do not prefix them with `NEXT_PUBLIC_` or commit real values. Vision models appear in the selector only when their required server-side credentials are configured.
@@ -23,6 +24,10 @@ Copy `.env.example` to `.env.local` for local development. Create a Supabase pro
 | `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL (public; needed at build time and runtime) |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Yes | Supabase publishable key (public; needed at build time) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes, server only | Privileged server-side operations; never expose to the browser |
+| `GITHUB_TOKEN_ENCRYPTION_KEY` | Optional | Dedicated key for encrypting stored GitHub tokens; otherwise derived from the service-role key |
+| `GITHUB_OAUTH_CLIENT_ID` / `GITHUB_OAUTH_CLIENT_SECRET` | Optional | Enables GitHub OAuth connection; personal access token setup works without OAuth |
+| `GITHUB_AGENT_MAX_STEPS` | Optional | GitHub coding-agent step cap, default 20 and maximum 40 |
+| `GITHUB_AGENT_ALLOW_WORKFLOW_EDITS` | Optional, default false | Allows editing repository workflow files; agent still cannot dispatch workflows |
 | `CLOUDFLARE_ACCOUNT_ID` | Yes | Cloudflare account ID used for Workers AI requests |
 | `CLOUDFLARE_AI_API_TOKEN` | Yes | Cloudflare API token with permission to call Workers AI |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | Optional | Adds Gemini 2.5 Flash and Gemini 2.5 Flash-Lite to the writing-model selector; server-side only |

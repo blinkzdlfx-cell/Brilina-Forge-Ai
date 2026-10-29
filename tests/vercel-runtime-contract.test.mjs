@@ -10,7 +10,7 @@ test("Vercel's native Next.js production build is covered independently of adapt
 
   assert.equal(pkg.scripts.build, "next build")
   assert.match(workflow, /Native Next\.js production build \(Vercel runtime\)/)
-  assert.match(workflow, /run: pnpm build\n/)
+  assert.match(workflow, /run: pnpm build\r?\n/)
   assert.match(workflow, /run: pnpm build:worker/)
   assert.doesNotMatch(workflow, /Cloud Run container build|docker build --tag brilina-forge-ai:ci/)
   const netlifyWorker = await read("netlify/functions/process-forge-job.mts")

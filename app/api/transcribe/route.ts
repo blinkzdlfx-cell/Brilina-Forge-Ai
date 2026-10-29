@@ -5,6 +5,9 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { getRuntimeEnv } from "@/lib/runtime-env"
 import { recordSecureDiagnostic } from "@/lib/secure-diagnostic"
 
+// The provider call below may take up to 120 s; give the function room beyond it.
+export const maxDuration = 150
+
 const MAX_AUDIO_BYTES = 20 * 1024 * 1024
 const MAX_RECORDING_MS = 10 * 60 * 1000
 const MAX_RETRY_AGE_MS = 5 * 60 * 1000

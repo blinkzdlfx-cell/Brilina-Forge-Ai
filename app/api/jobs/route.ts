@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth/require-user"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { DEFAULT_MODEL, isModelAllowed } from "@/lib/models"
 import { getRuntimeEnv } from "@/lib/runtime-env"
+import { checkRateLimit } from "@/lib/auth/rate-limit"
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const MAX_PROMPT_LENGTH = 12_000
@@ -33,6 +34,13 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const auth = await requireUser()
   if (!auth.ok) return auth.response
+
+  // Every background task is a full model run; keep a runaway client from
+  // burning the free-tier AI quota.
+  const limit = checkRateLimit(`background-job:${auth.user.id}`, 6, 60_000)
+  if (!limit.allowed) {
+    return Response.json({ error: "Too many background tasks. Wait a minute and try again." }, { status: 429, headers: { "retry-after": String(limit.retryAfterSeconds) } })
+  }
 
   let body: unknown
   try { body = await request.json() } catch {

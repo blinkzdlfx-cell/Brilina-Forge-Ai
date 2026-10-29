@@ -6,10 +6,12 @@ import { CheckIcon, ChevronDown, ChevronLeft, ChevronRight, CopyIcon, FileTextIc
 import {
   type ChatMessagePart,
   type ChatUIMessage,
+  type GithubToolPart,
   type TextMessagePart,
 } from "@/tools"
 import { MessageActions } from "@/components/message-actions"
 import { AskUserPart } from "@/components/parts/ask-user-part"
+import { GithubActionPart } from "@/components/parts/github-action-part"
 import { GithubRepoPart } from "@/components/parts/github-repo-part"
 import { ReasoningPart } from "@/components/parts/reasoning-part"
 import { SourcesPart } from "@/components/parts/sources-part"
@@ -21,12 +23,19 @@ import { Trace } from "@/components/ui/trace"
 
 const PRIVATE_ATTACHMENT_CONTEXT_PREFIX = "[[FORGE_PRIVATE_ATTACHMENT_CONTEXT]]\n"
 
-type StepPart = Extract<
-  ChatMessagePart,
-  {
-    type: "reasoning" | "tool-github_repo" | "tool-ask_user" | "tool-web_search"
-  }
->
+type StepPart =
+  | Extract<
+      ChatMessagePart,
+      {
+        type: "reasoning" | "tool-github_repo" | "tool-ask_user" | "tool-web_search"
+      }
+    >
+  | GithubToolPart
+
+// Every GitHub coding-agent tool is named gh_*, so one card renders them all.
+function isGithubToolPart(part: ChatMessagePart): part is GithubToolPart {
+  return part.type.startsWith("tool-gh_")
+}
 
 export function ChatMessage({
   message,
@@ -238,6 +247,15 @@ export function ChatMessage({
           Array.isArray(block) ? (
             <Trace key={index}>
               {block.map((part, partIndex) => {
+                if (isGithubToolPart(part)) {
+                  return (
+                    <GithubActionPart
+                      key={part.toolCallId}
+                      part={part}
+                      isStreaming={isStreaming}
+                    />
+                  )
+                }
                 switch (part.type) {
                   case "reasoning":
                     return (
@@ -322,7 +340,8 @@ function isStepPart(part: ChatMessagePart): part is StepPart {
   return (
     part.type === "reasoning" ||
     part.type === "tool-github_repo" ||
-    part.type === "tool-web_search"
+    part.type === "tool-web_search" ||
+    isGithubToolPart(part)
   )
 }
 
