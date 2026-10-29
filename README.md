@@ -31,6 +31,7 @@ Copy `.env.example` to `.env.local` for local development. Create a Supabase pro
 | `CLOUDFLARE_ACCOUNT_ID` | Yes | Cloudflare account ID used for Workers AI requests |
 | `CLOUDFLARE_AI_API_TOKEN` | Yes | Cloudflare API token with permission to call Workers AI |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | Optional | Adds Gemini 2.5 Flash and Gemini 2.5 Flash-Lite to the writing-model selector; server-side only |
+| `GEMINI_API_KEY` | Optional, PDF extraction | Gemini 2.5 Flash key for PDF text extraction; server-side only and sent in the `x-goog-api-key` request header |
 | `TAVILY_API_KEY` | For web search | Tavily API key |
 | `REDIS_URL` | Optional, for stream recovery | Layerbase Cloud Redis TLS URL (`rediss://...`); server-side only. See `docs/LAYERBASE_STREAM_RECOVERY.md`. |
 | `GROQ_API_KEY` | Optional | Enables the Groq Qwen vision model; keep server-side only |

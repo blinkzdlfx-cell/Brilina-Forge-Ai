@@ -489,7 +489,7 @@ export async function POST(req: Request) {
         if (/429|rate.?limit|quota/i.test(message)) {
           return "The selected model has reached its current usage limit. Wait briefly or choose another available model."
         }
-        return "The selected model request failed. Check its availability and billing, then retry or choose another model."
+        return "The selected model request failed. Check its availability, credentials, and billing, then retry or choose another model."
       },
       generateMessageId: () => crypto.randomUUID(),
       onFinish: async ({ responseMessage, isAborted }) => {

@@ -49,6 +49,16 @@ test("GitHub routes are authenticated, same-origin protected and never return to
   assert.match(callback, /cookie !== `\$\{state\}\.\$\{auth\.user\.id\}`/)
 })
 
+test("repository route narrows its token gate to a Response on every path", async () => {
+  const route = await read("app/api/github/repos/route.ts")
+  assert.match(route, /type GithubTokenResult =\s*\| \{ ok: true; token: string \}\s*\| \{ ok: false; response: Response \}/)
+  assert.match(route, /async function requireToken\(userId: string\): Promise<GithubTokenResult>/)
+  assert.match(route, /export async function GET\(request: Request\): Promise<Response>/)
+  assert.match(route, /export async function PUT\(request: Request\): Promise<Response>/)
+  assert.match(route, /if \(!tokenResult\.ok\) return tokenResult\.response/)
+  assert.doesNotMatch(route, /if \(!token\) return response/)
+})
+
 test("chat client keeps the regex and auto-resend fixes", async () => {
   const chat = await read("components/chat.tsx")
   assert.match(chat, /split\(\/\\s\+\/\)/)

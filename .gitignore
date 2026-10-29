@@ -39,3 +39,4 @@ pnpm-debug.log*
 *.tsbuildinfo
 next-env.d.ts
 rd.txt
+rd3.txt

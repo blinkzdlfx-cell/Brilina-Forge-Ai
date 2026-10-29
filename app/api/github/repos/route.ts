@@ -7,18 +7,25 @@ import { addAllowedRepos, getGithubToken, listAllowedRepos, removeAllowedRepos }
 
 export const dynamic = "force-dynamic"
 
-async function requireToken(userId: string) {
+type GithubTokenResult =
+  | { ok: true; token: string }
+  | { ok: false; response: Response }
+
+async function requireToken(userId: string): Promise<GithubTokenResult> {
   const token = await getGithubToken(userId)
   if (!token) {
-    return { token: null, response: Response.json({ error: "GitHub is not connected, or the stored token can no longer be read. Reconnect GitHub." }, { status: 409 }) }
+    return {
+      ok: false,
+      response: Response.json({ error: "GitHub is not connected, or the stored token can no longer be read. Reconnect GitHub." }, { status: 409 }),
+    }
   }
-  return { token, response: null }
+  return { ok: true, token }
 }
 
 // GET            -> repositories the agent may use
 // GET ?available -> repositories the connected account can access (paged), so
 //                   the user can choose which ones to allow
-export async function GET(request: Request) {
+export async function GET(request: Request): Promise<Response> {
   const auth = await requireUser()
   if (!auth.ok) return auth.response
 
@@ -30,8 +37,9 @@ export async function GET(request: Request) {
     const limit = checkRateLimit(`github-repos:${auth.user.id}`, 30, 60_000)
     if (!limit.allowed) return Response.json({ error: "Too many requests. Try again shortly." }, { status: 429 })
 
-    const { token, response } = await requireToken(auth.user.id)
-    if (!token) return response
+    const tokenResult = await requireToken(auth.user.id)
+    if (!tokenResult.ok) return tokenResult.response
+    const { token } = tokenResult
     const page = Math.min(Math.max(Number(url.searchParams.get("page")) || 1, 1), 20)
     const available = await listAccessibleRepos(token, page)
     const allowedNames = new Set(allowed.map((repo) => repo.full_name.toLowerCase()))
@@ -46,7 +54,7 @@ export async function GET(request: Request) {
 }
 
 // PUT { add?: string[], remove?: string[] }
-export async function PUT(request: Request) {
+export async function PUT(request: Request): Promise<Response> {
   if (!isSameOrigin(request)) return forbiddenOrigin()
   const auth = await requireUser()
   if (!auth.ok) return auth.response
@@ -83,8 +91,9 @@ export async function PUT(request: Request) {
 
     const rejected: Array<{ repo: string; reason: string }> = []
     if (toAdd.length) {
-      const { token, response } = await requireToken(auth.user.id)
-      if (!token) return response
+      const tokenResult = await requireToken(auth.user.id)
+      if (!tokenResult.ok) return tokenResult.response
+      const { token } = tokenResult
       // Re-check each repository with the user's own token so the allowlist can
       // never contain something the account cannot actually write to.
       const checked = await Promise.all(
