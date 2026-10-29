@@ -35,7 +35,8 @@ test("stream lifecycle diagnostics do not log generated text", () => {
 test("the route retains bounded tool turns and output tokens", () => {
   assert.match(route, /const MAX_OUTPUT_TOKENS = 6144/)
   assert.match(route, /const MAX_TOOL_STEPS = 6/)
-  assert.match(route, /stopWhen:\s*isStepCount\(MAX_TOOL_STEPS\)/)
+  assert.match(route, /stopWhen:\s*isStepCount\(toolStepLimit\)/)
+  assert.match(route, /const toolStepLimit = githubRepos \? githubAgentStepLimit\(\) : MAX_TOOL_STEPS/)
 })
 
 test("attachment preparation prevents duplicate submissions and cleans up after network failures", () => {

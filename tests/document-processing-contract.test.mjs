@@ -12,6 +12,8 @@ test("document processing is authenticated, owner-scoped, bounded, and supports 
   assert.match(route, /application\/pdf/)
   assert.match(route, /DOCX_TYPE/)
   assert.match(route, /GEMINI_API_KEY/)
+  assert.match(route, /"x-goog-api-key": key/)
+  assert.doesNotMatch(route, /generateContent\?key=/)
   assert.match(route, /analyzeImage/)
   assert.match(route, /AbortSignal\.timeout/)
   assert.match(route, /createAdminClient/)

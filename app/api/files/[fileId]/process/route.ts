@@ -63,9 +63,9 @@ async function extractPdf(bytes: Uint8Array) {
   const key = getRuntimeEnv("GEMINI_API_KEY")
   if (!key) throw new Error("document_provider_not_configured")
   if (bytes.byteLength > 8 * 1024 * 1024) throw new Error("pdf_too_large_for_processing")
-  const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + encodeURIComponent(key), {
+  const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "x-goog-api-key": key },
     signal: AbortSignal.timeout(90_000),
     body: JSON.stringify({
       contents: [{ role: "user", parts: [

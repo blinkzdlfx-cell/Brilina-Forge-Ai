@@ -14,7 +14,9 @@ import {
 const MAX_RECORDING_BYTES = 20 * 1024 * 1024
 const MAX_RECORDING_MS = 10 * 60 * 1000
 const AUTO_STOP_MARGIN_MS = 1000
-const TRANSCRIPTION_TIMEOUT_MS = 45_000
+// Must exceed the server-side provider timeout (120 s); otherwise the browser gives up
+// on a request the server later completes, and the retry finds the audio already consumed.
+const TRANSCRIPTION_TIMEOUT_MS = 125_000
 const MAX_IMAGE_COUNT = 3
 const MAX_ATTACHMENT_COUNT = 5
 const MAX_IMAGE_FILE_BYTES = 1024 * 1024
@@ -99,18 +101,22 @@ function getAudioExtension(type: string) {
   return "webm"
 }
 
-function WaveformRing({ level }: { level: number }) {
+// A pulsing ring that follows the microphone level, drawn around its child
+// (the stop button). The rings are decorative; the button keeps its own label.
+function WaveformRing({ level, children }: { level: number; children: React.ReactNode }) {
   return (
-    <span className="relative inline-flex size-8 items-center justify-center" aria-hidden="true">
+    <span className="relative inline-flex size-10 shrink-0 items-center justify-center">
       <span
-        className="absolute inset-0 rounded-full border border-current opacity-60 transition-transform duration-75"
-        style={{ transform: `scale(${1 + level * 0.45})` }}
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 rounded-full border border-current opacity-50 transition-transform duration-75 motion-reduce:transition-none"
+        style={{ transform: `scale(${1 + level * 0.3})` }}
       />
       <span
-        className="absolute inset-1 rounded-full border-2 border-current opacity-80 transition-transform duration-75"
-        style={{ transform: `scale(${1 + level * 0.25})` }}
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-1 rounded-full border-2 border-current opacity-70 transition-transform duration-75 motion-reduce:transition-none"
+        style={{ transform: `scale(${1 + level * 0.18})` }}
       />
-      <MicIcon className="relative size-4" />
+      <span className="relative">{children}</span>
     </span>
   )
 }
@@ -234,6 +240,14 @@ export function PromptForm({
   const recordingTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null)
   const cancelledRef = React.useRef(false)
   const maxLengthReachedRef = React.useRef(false)
+  // Recording callbacks outlive the render that started them. Read the latest
+  // submit handler and attachments through refs instead of stale closures.
+  const onSubmitRef = React.useRef(onSubmit)
+  const selectedImagesRef = React.useRef(selectedImages)
+  React.useLayoutEffect(() => {
+    onSubmitRef.current = onSubmit
+    selectedImagesRef.current = selectedImages
+  })
 
   function resizeTextarea(textarea: HTMLTextAreaElement) {
     textarea.style.height = "auto"
@@ -361,7 +375,7 @@ export function PromptForm({
       if (intent === "send") {
         const currentInput = inputRef.current.trim()
         const combined = [currentInput, transcript].filter(Boolean).join(currentInput ? " " : "")
-        const succeeded = await onSubmit(combined, selectedImages, false)
+        const succeeded = await onSubmitRef.current(combined, selectedImagesRef.current, false)
         if (succeeded) {
           setSelectedImages([])
           setImageError("")
@@ -422,7 +436,7 @@ export function PromptForm({
       audioContextRef.current = context
       await context.resume()
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       })
       streamRef.current = stream
       chunksRef.current = []
@@ -441,7 +455,7 @@ export function PromptForm({
       const mimeType = getRecordingMimeType()
       const recorder = new MediaRecorder(
         stream,
-        mimeType ? { mimeType, audioBitsPerSecond: 64_000 } : { audioBitsPerSecond: 64_000 }
+        mimeType ? { mimeType, audioBitsPerSecond: 96_000 } : { audioBitsPerSecond: 96_000 }
       )
       recorderRef.current = recorder
       recorder.ondataavailable = (event) => {
@@ -590,7 +604,7 @@ export function PromptForm({
       return
     }
     if (combined.some((file) => !ALLOWED_IMAGE_TYPES.has(file.type) && !ALLOWED_DOCUMENT_TYPES.has(file.type))) {
-      setImageError("Supported files: PNG, JPEG, WebP, TXT, MD, PDF, and DOCX.")
+      setImageError("Supported files: PNG, JPEG, WebP, TXT, MD, CSV, JSON, HTML, PDF, and DOCX.")
       return
     }
     const images = combined.filter((file) => ALLOWED_IMAGE_TYPES.has(file.type))
@@ -738,35 +752,31 @@ export function PromptForm({
                 </div>}
               </div>
             </>
-            <label className="ml-auto flex shrink-0 items-center gap-1.5 px-1 text-[11px] text-muted-foreground" title="Run this request as a persistent background task">
-              <input type="checkbox" checked={runInBackground} onChange={(event) => setRunInBackground(event.target.checked)} disabled={isSubmitting || isBusy || selectedImages.length > 0} className="size-3.5 accent-primary" />
-              Background task
-            </label>
+            {!isVoiceActive && (
+              <label className="ml-auto flex shrink-0 items-center gap-1.5 px-1 text-[11px] text-muted-foreground" title="Run this request as a persistent background task">
+                <input type="checkbox" checked={runInBackground} onChange={(event) => setRunInBackground(event.target.checked)} disabled={isSubmitting || isBusy || selectedImages.length > 0} className="size-3.5 accent-primary" />
+                Background task
+              </label>
+            )}
             {isVoiceActive ? (
               <>
-                {isRecording ? <WaveformRing level={waveformLevel} /> : null}
-                <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                  {isRecording
-                    ? "Listening…"
-                    : voiceState === "stopped"
-                      ? "Transcribing…"
-                      : isTranscribing
-                        ? "Transcribing…"
-                        : voiceState === "failed"
-                          ? "Couldn't transcribe. Tap to retry."
-                          : "Audio ready"}
-                </span>
-                {voiceState === "failed" && (
-                  <InputGroupButton type="button" size="icon-sm" variant="outline" aria-label="Retry transcription" onClick={retryTranscription}>
-                    <RotateCcwIcon />
-                  </InputGroupButton>
-                )}
-                <InputGroupButton type="button" size="icon-sm" variant="ghost" className="shrink-0" aria-label="Cancel audio" title="Cancel audio" onClick={cancelVoice}>
+                <InputGroupButton type="button" size="icon-sm" variant="ghost" className="ml-auto shrink-0" aria-label="Discard recording" title="Discard" onClick={cancelVoice}>
                   <XIcon />
                 </InputGroupButton>
-                {isRecording && (
-                  <InputGroupButton type="button" size="icon-sm" variant="outline" className="shrink-0" aria-label="Stop and transcribe without sending" title="Stop and transcribe" onClick={() => finalizeRecording("insert")}>
-                    <SquareIcon />
+                {isRecording ? (
+                  <WaveformRing level={waveformLevel}>
+                    <InputGroupButton type="button" size="icon-sm" variant="outline" className="shrink-0" aria-label="Stop and transcribe without sending" title="Stop and transcribe" onClick={() => finalizeRecording("insert")}>
+                      <SquareIcon />
+                    </InputGroupButton>
+                  </WaveformRing>
+                ) : (
+                  <span role="status" aria-live="polite" className={`min-w-0 truncate text-xs ${voiceState === "failed" ? "text-destructive" : "text-muted-foreground"}`}>
+                    {voiceState === "failed" ? "Couldn't transcribe" : "Transcribing…"}
+                  </span>
+                )}
+                {voiceState === "failed" && (
+                  <InputGroupButton type="button" size="icon-sm" variant="outline" aria-label="Retry transcription" title="Retry transcription" onClick={retryTranscription}>
+                    <RotateCcwIcon />
                   </InputGroupButton>
                 )}
               </>

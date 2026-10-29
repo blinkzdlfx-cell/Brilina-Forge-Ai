@@ -5,7 +5,7 @@
 **Current production runtime:** Vercel (Next.js 16, React 19, AI SDK); the Cloudflare Worker remains a retained fallback and Cloudflare Workers AI is called over HTTPS  
 **Last reconciled against main:** `d9763d0c84b02984fab6006045b7815b46369404` (2026-10-27)  
 **Status:** Product/stage requirements, not a live implementation tracker. Verify each stage against current source, automated tests, live migration state, and acceptance evidence.  
-**Execution rule:** Four substantial sequential batches. Complete implementation and comprehensive verification for each batch before progressing. No production deployment or GitHub integration without separate explicit approval.
+**Execution rule:** Four substantial sequential batches. Complete implementation and comprehensive verification for each batch before progressing. No production deployment or live migration without separate explicit approval. The user explicitly approved the GitHub coding plugin source integration on 2026-10-29; its additive migration remains unapplied until separately approved.
 
 This document retains product requirements and acceptance criteria. **Runtime/hosting authority is `docs/NEXT_PHASE_PLAN.md`**: Vercel is the primary production application runtime, the existing Cloudflare Worker remains a fallback, and Cloudflare Workers AI continues to be called over HTTPS where configured. Preserve existing working code and do not duplicate already-implemented functionality.
 
@@ -14,8 +14,8 @@ This document retains product requirements and acceptance criteria. **Runtime/ho
 - **Foundation Batch 1:** Native Next.js/Vercel build, AI SDK streaming path, bounded requests/context, lint, type checking, unit/contract tests, retained Cloudflare Worker build, and Cloud Run container build are present in CI. The owner has confirmed a new chat can send a message and receive a response. Detailed streaming, cancellation, error, and manual scroll-follow behavior remain subject to the current acceptance pass.
 - **Foundation Batch 2:** PR #33 was merged as `ab35de3ed9b5db62866b7f4d780c92d7e8104df7`. Direct browser-to-private-Supabase-Storage uploads, conversation/message persistence, and the audio-storage migration are in place. Migration `0007_private_audio_storage.sql` was explicitly approved and applied to project `jjocynbtuafdokkjemym` on 2026-10-27. Current authenticated acceptance is partial: the owner reports document upload works, while image handling/preview and attachment failure recovery need follow-up.
 - **Chat/sidebar interaction work:** PR #36 was merged to `main` as `d9763d0c84b02984fab6006045b7815b46369404`. GitHub Actions CI passed unit/contract tests, lint, typecheck, native Next.js production build, Worker build, and Cloud Run container build. The Vercel commit status is successful. The owner has confirmed sidebar rename/pin/archive/delete, mobile loading indicator, profile/settings modal, long-press prompt actions, new-chat messaging, and existing authentication work on mobile.
-- **Remaining Batch 2 acceptance gaps:** outside-tap dismissal for every popover; removing password/logout from the chat header menu; full-size image/document previews; keeping attachments in the composer through upload and retry; no generated visible prompt for attachment-only sends; no redundant fetch when selecting the already-loaded conversation; and smart scroll-follow that stops when the user scrolls away and resumes near the bottom.
-- PR #37 (`85c1b76ceb427743e7ecebd3ad035fa0eccb1220`) merged the prior Batch 2 interaction fixes. The owner tested them and reports nearly all work; remaining presentation issues are being handled on `fix/streaming-attachment-layout-message-selection`, which is not merged and must pass CI/preview/manual acceptance.
+- **Remaining Batch 2 acceptance gates:** Current source contains the mixed attachment previews, attachment-only explanatory context, same-conversation no-refetch guard, restored-history auto-follow, profile preview, selection/copy feedback, and pinned-first ordering. Tests cover several contracts. Focused preview/browser acceptance for popovers, upload retry, and mobile/desktop behavior remains outstanding.
+- Batch 2 final polish is present in the current source: native streaming headers, responsive mixed attachment previews, restored-history scroll handling, profile-photo preview, native selection/copy feedback, and pinned-first ordering. Contract coverage exists in tests/streaming-attachment-polish.test.mjs; the full local suite passed 75/75 on 2026-10-29 after fixing a CRLF-sensitive workflow assertion. Preview deployment and focused owner browser retest remain unverified acceptance gates.
 - Repository migrations, CI, and deployment status do not prove that every live provider workflow is correct. Keep automated results, Vercel status, authenticated preview tests, provider tests, and unknowns distinct.
 - The source currently enforces a 10-minute voice recording limit. Keep documentation aligned with the code unless an approved change is made.
 ## Upload and persistence reliability requirements
@@ -39,7 +39,7 @@ This document retains product requirements and acceptance criteria. **Runtime/ho
 - Resize and compress images in the browser before upload.
 - Use private buckets, access policies, and short-lived signed URLs where provider access requires them. Never use permanent public URLs for private files.
 - Keep the Supabase service-role key and all provider secrets server-side.
-- Do not implement GitHub integration in this phase. Keep core database tables general so later integrations can add separate tables without changing the core schema. Preserve existing UI and features unless a stage explicitly changes their behavior.
+- Keep core database tables general; the user-approved GitHub plugin uses separate additive tables and does not alter core chat schema. Preserve existing UI and features unless a stage explicitly changes their behavior.
 - No public sign-up, invitation codes, or invite links. The owner creates accounts from the owner-only admin screen.
 - Historical approval note: Batch 1 was previously approved. This line does not establish current completion status; use the current source and the small-batch approval rule at the top of this document.
 
@@ -82,7 +82,7 @@ Current constraints and cautions:
 - **Files:** private Supabase Storage, with user-owned file metadata, short-lived signed URLs where necessary, and upload-first references.
 - **Streaming:** preserve native AI SDK streaming from `streamText` through UI-message stream conversion to the `useChat` client. Buffer only partial protocol frames or required state; never wait for the complete answer and simulate streaming.
 - **Optional background work:** choose a single durable workflow/queue mechanism only in Batch 4 after verifying the workload and current Vercel/Cloudflare limits. Do not introduce infrastructure solely because it is mentioned as a possibility.
-- **No R2, no Neon, and no image-generation provider.** Do not implement GitHub integration in this scope.
+- **No R2, no Neon, and no image-generation provider.** The separately approved GitHub plugin is bounded to allowlisted repositories, `forge/*` write branches, and owner-reviewed PRs; it cannot merge PRs or dispatch workflows.
 
 Vercel Functions document a 4.5 MB request/response payload limit. The existing server routes allow 10 MiB files and 20 MiB audio, so application limits alone do not ensure Vercel will accept those requests. Large uploads must use a verified authenticated direct-to-private-Supabase-Storage flow or another tested path that avoids sending oversized binary payloads through a Vercel Function. Server routes must verify file ownership before processing and accept compact references where possible.
 
@@ -787,7 +787,7 @@ Delivery order is sequential; do not run parallel implementation workstreams:
 | E | Close verified product gaps in dependency order: auth/RLS acceptance, conversation persistence, private storage/attachments, vision, PDF then TXT/DOCX, justified keep-alive, email provider verification | Each feature passes its own tests and acceptance before next |
 | F | Implement the Agent Workflow System using one approved workflow engine; finish end-to-end acceptance | State/retry/recovery/RLS tests pass; CI and live tests reported separately |
 
-Stage 5 (Agent Workflow System) remains dependent on stable runtime, auth, and persistence. The final acceptance stage covers the entire application. Do not deploy, alter production DNS, apply live migrations, or begin GitHub integration without separate explicit approval.
+Stage 5 (the durable Agent Workflow System described above) remains dependent on stable runtime, auth, and persistence. The separately approved GitHub coding plugin is not that workflow engine; its source is present, but its additive migration and any live rollout remain gated by explicit environment-specific approval. Do not deploy, alter production DNS, or apply live migrations without separate explicit approval.
 
 ## Chat/sidebar interaction work — merged baseline and remaining Batch 2 polish
 
@@ -801,4 +801,4 @@ The owner reports that nearly all tested functionality now works, including auth
 - User message text should support native partial selection; remove the custom “Select text” action, clear selection after copying, and show a check icon after copy succeeds.
 - Pinned conversations should be the first sidebar section when any are pinned; Recent should lead when none are pinned.
 
-The current open polish branch is `fix/streaming-attachment-layout-message-selection`. It is not merged. Preserve private storage, owner checks, existing MIME/size limits, invite-only access, accepted auth/password recovery/MFA behavior, and native AI SDK streaming. The branch must pass CI, preview verification, and the owner's focused retest before Batch 2 is declared accepted or Batch 3 begins. Do not deploy to production, change DNS/secrets, apply live migrations, or provision paid infrastructure as part of this work.
+The polish implementation is present in the current source baseline. Preserve private storage, owner checks, existing MIME/size limits, invite-only access, accepted auth/password recovery/MFA behavior, and native AI SDK streaming. Preview verification and the focused owner retest are still required before Batch 2 is declared accepted or Batch 3 begins. Do not deploy to production, change DNS/secrets, apply live migrations, or provision paid infrastructure as part of this work.
